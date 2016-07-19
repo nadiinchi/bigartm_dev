@@ -1,0 +1,32 @@
+.. BigARTM documentation master file, created by
+   sphinx-quickstart on Sun Jul 13 20:00:11 2014.
+   You can adapt this file completely to your liking, but it should at least
+   contain the root `toctree` directive.
+
+.. _legacy_pages:
+
+BigARTM Developer's Guide
+==========================
+
+These pages describe the development process of BigARTM library.
+If your intent to use BigARTM as a typical user, please proceed to
+:doc:`/tutorials/windows_basic` or :doc:`/tutorials/linux_basic`,
+depending on your operating system.
+If you intent is to contribute to the development BigARTM, please proceed to the links below.
+
+.. toctree::
+   :maxdepth: 2
+
+   devguide/downloads.txt
+   devguide/source_code.txt
+   devguide/dev_build_windows.txt
+   devguide/python_windows.txt
+   devguide/proto_windows.txt
+   devguide/ipython_windows.txt
+   devguide/dev_build_linux.txt
+   devguide/code_style.txt
+
+Wiki pages:
+
+* `Create New Regularizer <https://github.com/bigartm/bigartm/wiki/Creating-new-regularizers>`_
+* `Q & A <https://github.com/bigartm/bigartm/wiki/Q&A>`_

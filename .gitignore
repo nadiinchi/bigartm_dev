@@ -1,0 +1,127 @@
+# emacs backup files
+*~
+
+# generated .batch files
+*.batch
+
+# python files
+*.pyc
+
+# Dependencies
+*.depends
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+
+# Other libraries
+vowpal_wabbit/*
+datasets/docword.*.txt
+
+# Visual studio garbage
+*.opensdf
+*.sdf
+*.suo
+*/ipch/*
+*.vcxproj.user
+
+# Auto-generated files (by pdflatex)
+collateral/*.aux
+collateral/*.log
+collateral/*.pdf
+collateral/*.toc
+collateral/*.synctex.gz
+collateral/*.bbl
+collateral/*.blg
+collateral/*.dvi
+collateral/*.out
+collateral/*.ps
+collateral/*.synctex
+
+docs/*.bak
+docs/*/*.bak
+
+src/Intermediate/*
+src/Win32/*
+
+*.log.INFO.*
+*.log.WARNING.*
+*.log.ERROR.*
+*.batch
+
+# Binaries
+/src/artm/unittests/
+/src/cpp_client/cpp_client
+/src/Intermediate/
+/src/Win32/
+/src/artm/Debug/
+/src/artm/Release/
+
+
+/3rdparty/protobuf/vsprojects/Debug/*
+/3rdparty/protobuf/vsprojects/Release/*
+/3rdparty/glog/Debug/*
+/3rdparty/glog/Release/*
+/3rdparty/glog/vsprojects/libglog/Debug/*
+/3rdparty/glog/vsprojects/libglog/Release/*
+/3rdparty/glog/vsprojects/libglog_static/Debug/*
+/3rdparty/glog/vsprojects/libglog_static/Release/*
+/3rdparty/protobuf/python/dist/*
+/3rdparty/protobuf/python/google/protobuf/compiler/*
+/3rdparty/protobuf/python/google/protobuf/descriptor_pb2.py
+/3rdparty/protobuf/python/google/protobuf/internal/factory_test1_pb2.py
+/3rdparty/protobuf/python/google/protobuf/internal/factory_test2_pb2.py
+/3rdparty/protobuf/python/google/protobuf/internal/more_extensions_dynamic_pb2.py
+/3rdparty/protobuf/python/google/protobuf/internal/more_extensions_pb2.py
+/3rdparty/protobuf/python/google/protobuf/internal/more_messages_pb2.py
+/3rdparty/protobuf/python/google/protobuf/internal/test_bad_identifiers_pb2.py
+/3rdparty/protobuf/python/google/protobuf/unittest_custom_options_pb2.py
+/3rdparty/protobuf/python/google/protobuf/unittest_import_pb2.py
+/3rdparty/protobuf/python/google/protobuf/unittest_import_public_pb2.py
+/3rdparty/protobuf/python/google/protobuf/unittest_mset_pb2.py
+/3rdparty/protobuf/python/google/protobuf/unittest_no_generic_services_pb2.py
+/3rdparty/protobuf/python/google/protobuf/unittest_pb2.py
+/3rdparty/protobuf/python/protobuf.egg_info/*
+/3rdparty/protobuf/python/setuptools-0.6c11-py2.7.egg
+/3rdparty/protobuf/python/protobuf.egg-info/*
+/3rdparty/protobuf/src/protoc
+
+/libs/libboost*
+/libs/v100/*
+/libs/v110/*
+
+docs/_build/*
+
+build*
+
+# protobuf generated files
+/python/artm/wrapper/messages_pb2.py
+src/artm/core/internals.pb.cc
+src/artm/core/internals.pb.h
+src/artm/messages.pb.cc
+src/artm/messages.pb.h
+
+/src/python/.idea/*
+
+# pytest temp files
+/python/build/*
+/python/.cache/*
+/python/tests/wrapper/__pycache__/*
+/python/tests/artm/__pycache__/*
+/python/..INFO
+/python/artm/#*
+/python/artm/wrapper/#*
+/python/bigartm.egg-info/*
+/python/dist/*
+
+/src/artm/version.h

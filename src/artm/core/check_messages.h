@@ -1,0 +1,856 @@
+// Copyright 2015, Additive Regularization of Topic Models.
+
+#ifndef SRC_ARTM_CORE_CHECK_MESSAGES_H_
+#define SRC_ARTM_CORE_CHECK_MESSAGES_H_
+
+#include <string>
+
+#include "boost/lexical_cast.hpp"
+#include "boost/uuid/uuid_io.hpp"
+
+#include "glog/logging.h"
+
+#include "artm/core/common.h"
+#include "artm/core/exceptions.h"
+#include "artm/core/internals.pb.h"
+#include "artm/core/token.h"
+
+namespace artm {
+namespace core {
+
+template <typename T>
+inline bool FixAndValidateMessage(T* message, bool throw_error = true);
+
+template <typename T>
+inline bool ValidateMessage(const T& message, bool throw_error = true);
+
+template<typename T>
+inline void FixPackedMessage(std::string* message);
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// DescribeErrors routines
+// This method is required for all messages that go through c_interface.
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+inline std::string DescribeErrors(const ::artm::TopicModel& message) {
+  std::stringstream ss;
+
+  const bool has_topic_data = (message.num_topics() != 0 || message.topic_name_size() != 0);
+  const bool has_token_data = (message.class_id_size() != 0 || message.token_size() != 0);
+  const bool has_bulk_data = (message.token_weights_size() != 0);
+  const bool has_sparse_format = has_bulk_data && (message.topic_indices_size() != 0);
+
+  if (has_topic_data) {
+    if (message.num_topics() != message.topic_name_size())
+      ss << "Length mismatch in fields TopicModel.num_topics and TopicModel.topic_name";
+  }
+
+  if (has_token_data) {
+    if (message.class_id_size() != message.token_size())
+      ss << "Inconsistent fields size in TopicModel.token and TopicModel.class_id: "
+         << message.token_size() << " vs " << message.class_id_size();
+  }
+
+  if (has_bulk_data && !has_topic_data)
+    ss << "TopicModel.topic_name_size is empty";
+  if (has_bulk_data && !has_token_data)
+    ss << "TopicModel.token_size is empty";
+
+  if (has_bulk_data) {
+    if ((message.token_weights_size() != message.token_size()) ||
+        (has_sparse_format && (message.topic_indices_size() != message.token_size()))) {
+      ss << "Inconsistent fields size in TopicModel: "
+        << message.token_size() << " vs " << message.class_id_size()
+        << " vs " << message.token_weights_size() << ";";
+    }
+
+    for (int i = 0; i < message.token_size(); ++i) {
+      bool has_sparse_format_local = has_sparse_format && (message.topic_indices(i).value_size() > 0);
+      if (has_sparse_format_local) {
+        if (message.topic_indices(i).value_size() != message.token_weights(i).value_size()) {
+          ss << "Length mismatch between TopicModel.topic_indices(" << i << ")"
+             << " and TopicModel.token_weights(" << i << ")";
+          break;
+        }
+
+        bool ok = true;
+        for (int topic_indices : message.topic_indices(i).value()) {
+          if (topic_indices < 0 || topic_indices >= message.num_topics()) {
+            ss << "Value " << topic_indices << " in message.topic_indices(" << i
+               << ") is negative or exceeds TopicModel.num_topics";
+            ok = false;
+            break;
+          }
+        }
+
+        if (!ok)
+          break;
+      }
+
+      if (!has_sparse_format) {
+        if (message.token_weights(i).value_size() != message.num_topics()) {
+          ss << "Length mismatch between TopicModel.num_topics and TopicModel.token_weights(" << i << ")";
+          break;
+        }
+      }
+    }
+  }
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::ThetaMatrix& message) {
+  std::stringstream ss;
+  const int item_size = message.item_id_size();
+  const bool has_title = (message.item_title_size() > 0);
+  const bool has_sparse_format = (message.topic_indices_size() != 0);
+  if ((message.item_weights_size() != item_size) ||
+      (has_title && (message.item_title_size() != item_size)) ||
+      (has_sparse_format && (message.topic_indices_size() != item_size))) {
+    ss << "Inconsistent fields size in ThetaMatrix: "
+       << message.item_id_size() << " vs " << message.item_weights_size()
+       << " vs " << message.item_title_size() << " vs " << message.topic_indices_size() << ";";
+  }
+
+  if (message.num_topics() == 0 || message.topic_name_size() == 0)
+    ss << "ThetaMatrix.topic_name_size is empty";
+  if (message.num_topics() != message.topic_name_size())
+    ss << "Length mismatch in fields ThetaMatrix.num_topics and ThetaMatrix.topic_name";
+
+  for (int i = 0; i < message.item_id_size(); ++i) {
+    if (has_sparse_format) {
+      if (message.topic_indices(i).value_size() != message.item_weights(i).value_size()) {
+        ss << "Length mismatch between ThetaMatrix.topic_indices(" << i << ")"
+           << " and ThetaMatrix.item_weights(" << i << ")";
+        break;
+      }
+
+      bool ok = true;
+      for (int topic_indices : message.topic_indices(i).value()) {
+        if (topic_indices < 0 || topic_indices >= message.num_topics()) {
+          ss << "Value " << topic_indices << " in message.topic_indices(" << i
+             << ") is negative or exceeds ThetaMatrix.num_topics";
+          ok = false;
+          break;
+        }
+      }
+
+      if (!ok)
+        break;
+    }
+  }
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::Batch& message) {
+  std::stringstream ss;
+  if (message.has_id()) {
+    try {
+      boost::lexical_cast<boost::uuids::uuid>(message.id());
+    }
+    catch (...) {
+      ss << "Batch.id must be GUID, got: " << message.id();
+      return ss.str();
+    }
+  } else {
+    ss << "Batch.id is not specified";
+    return ss.str();
+  }
+
+  const bool has_tokens = (message.token_size() > 0);
+  if (!has_tokens && (message.class_id_size() > 0)) {
+    ss << "Empty Batch.token require that Batch.class_id must also be empty, batch.id = " << message.id();
+    return ss.str();
+  }
+
+  if (has_tokens && (message.class_id_size() != message.token_size())) {
+    ss << "Length mismatch in fields Batch.class_id and Batch.token, batch.id = " << message.id();
+    return ss.str();
+  }
+
+  for (int item_id = 0; item_id < message.item_size(); ++item_id) {
+    for (const auto& field : message.item(item_id).field()) {
+      if (field.token_count_size() != 0) {
+        ss << "Field.token_count field is deprecated. Use Field.token_weight instead; ";
+        break;
+      }
+
+      if (field.token_weight_size() != field.token_id_size()) {
+        ss << "Length mismatch in field Batch.item(" << item_id << ").token_weight and token_id; ";
+        break;
+      }
+
+      for (int token_index = 0; token_index < field.token_id_size(); token_index++) {
+        int token_id = field.token_id(token_index);
+        if ((token_id < 0) || (has_tokens && (token_id >= message.token_size()))) {
+          ss << "Value " << token_id << " in Batch.Item(" << item_id
+             << ").token_id is negative or exceeds Batch.token_size";
+          return ss.str();
+        }
+      }
+    }
+  }
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::GetScoreValueArgs& message) {
+  std::stringstream ss;
+
+  if (!message.has_score_name() || message.score_name().empty())
+    ss << "GetScoreValueArgs.score_name is missing; ";
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::MasterModelConfig& message) {
+  std::stringstream ss;
+
+  if (message.class_weight_size() != message.class_id_size())
+    ss << "Length mismatch in fields MasterModelConfig.class_id and MasterModelConfig.class_weight; ";
+
+  if (message.num_document_passes() < 0)
+    ss << "Field MasterModelConfig.num_document_passes must be non-negative; ";
+
+  for (int i = 0; i < message.regularizer_config_size(); ++i) {
+    const RegularizerConfig& config = message.regularizer_config(i);
+    if (!config.has_tau())
+      ss << "Field MasterModelConfig.RegularizerConfig.tau must not be empty "
+         << "(regularizer name: " << config.name() << "); ";
+  }
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::FitOfflineMasterModelArgs& message) {
+  std::stringstream ss;
+
+  if (message.batch_filename_size() != message.batch_weight_size())
+    ss << "Length mismatch in fields FitOfflineMasterModelArgs.batch_filename "
+       << "and FitOfflineMasterModelArgs.batch_weight; ";
+
+  if (message.num_collection_passes() <= 0)
+    ss << "FitOfflineMasterModelArgs.passes() must be a positive number";
+
+  if (message.has_batch_folder() && (message.batch_filename_size() != 0))
+    ss << "Only one of FitOfflineMasterModelArgs.batch_folder, "
+       << "FitOfflineMasterModelArgs.batch_filename must be specified; ";
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::FitOnlineMasterModelArgs& message) {
+  std::stringstream ss;
+
+  if (message.batch_filename_size() == 0)
+    ss << "Fields FitOnlineMasterModelArgs.batch_filename must not be empty; ";
+
+  if (message.batch_filename_size() != message.batch_weight_size())
+    ss << "Length mismatch in fields FitOnlineMasterModelArgs.batch_filename "
+    << "and FitOnlineMasterModelArgs.batch_weight; ";
+
+  if (message.update_after_size() == 0)
+    ss << "Field FitOnlineMasterModelArgs.update_after must not be empty; ";
+
+  if (message.update_after_size() != message.apply_weight_size() ||
+      message.update_after_size() != message.decay_weight_size()) {
+    ss << "Length mismatch in fields FitOnlineMasterModelArgs.update_after, "
+       << "FitOnlineMasterModelArgs.apply_weight and FitOnlineMasterModelArgs.decay_weight; ";
+  }
+
+  for (int i = 0; i < message.update_after_size(); i++) {
+    int value = message.update_after(i);
+    if (value <= 0) {
+      ss << "FitOnlineMasterModelArgs.update_after[" << i << "] == " << value
+         << ", expected value must be greater than zero; ";
+      break;
+    }
+    if (value > message.batch_filename_size()) {
+      ss << "FitOnlineMasterModelArgs.update_after[" << i << "] == " << value
+         << ", expected value must not exceed FitOnlineMasterModelArgs.batch_filename_size(); ";
+      break;
+    }
+    if ((i > 0) && (message.update_after(i) <= message.update_after(i - 1))) {
+      ss << "FitOnlineMasterModelArgs.update_after[" << i << "] "
+         << "is less than previous value; expect strictly increasing sequence; ";
+      break;
+    }
+    if ((i + 1) == message.update_after_size()) {
+      if (message.update_after(i) != message.batch_filename_size()) {
+        ss << "Last element in FitOnlineMasterModelArgs.update_after is " << message.update_after(i) << ", "
+           << "expected value is FitOnlineMasterModelArgs.batch_filename_size(), which was "
+           << message.batch_filename_size() << "; ";
+        break;
+      }
+    }
+  }
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::TransformMasterModelArgs& message) {
+  std::stringstream ss;
+
+  if (message.batch_filename_size() == 0 && message.batch_size() == 0)
+    ss << "Either TransformMasterModelArgs.batch_filename or TransformMasterModelArgs.batch must be specified; ";
+  if (message.batch_filename_size() != 0 && message.batch_size() != 0)
+    ss << "Only one of TransformMasterModelArgs.batch_filename, "
+       << "TransformMasterModelArgs.batch must be specified; ";
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::InitializeModelArgs& message) {
+  std::stringstream ss;
+
+  if (!message.has_model_name()) {
+    // Allow this to default to MasterModelConfig.pwt_name
+    // ss << "InitializeModelArgs.model_name is not defined; ";
+  }
+
+  if (!message.has_dictionary_name()) {
+    ss << "InitializeModelArgs.dictionary_name is not defined; ";
+  }
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::FilterDictionaryArgs& message) {
+  std::stringstream ss;
+
+  if (!message.has_dictionary_name())
+    ss << "FilterDictionaryArgs has no dictionary name; ";
+
+  if (!message.has_dictionary_target_name())
+     ss << "FilterDictionaryArgs has no target dictionary name; ";
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::GatherDictionaryArgs& message) {
+  std::stringstream ss;
+
+  if (!message.has_dictionary_target_name())
+    ss << "GatherDictionaryArgs has no target dictionary name; ";
+
+  if (!message.has_data_path() && (message.batch_path_size() == 0))
+    ss << "GatherDictionaryArgs has neither batch_path nor data_path set; ";
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::DictionaryData& message) {
+  std::stringstream ss;
+
+  if (!message.has_name())
+    ss << "DictionaryData has no dictionary name; ";
+
+  bool is_token_df_ok = message.token_df_size() == 0 || message.token_df_size() == message.token_size();
+  bool is_token_tf_ok = message.token_tf_size() == 0 || message.token_tf_size() == message.token_size();
+  bool is_token_value_ok = message.token_value_size() == 0 || message.token_value_size() == message.token_size();
+
+  if (message.token_size() != message.class_id_size() ||
+      !is_token_df_ok ||
+      !is_token_tf_ok ||
+      !is_token_value_ok) {
+    ss << "DictionaryData general token fields have inconsistent sizes; ";
+  }
+
+  if (message.cooc_first_index_size() != message.cooc_second_index_size() ||
+      message.cooc_first_index_size() != message.cooc_value_size()) {
+    ss << "DictionaryData cooc fields have inconsistent sizes; ";
+  }
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::ExportModelArgs& message) {
+  std::stringstream ss;
+  if (!message.has_file_name()) ss << "ExportModelArgs.file_name is not defined; ";
+
+  // Allow this to default to MasterModelConfig.pwt_name
+  // if (!message.has_model_name()) ss << "ExportModelArgs.model_name is not defined; ";
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::ImportModelArgs& message) {
+  std::stringstream ss;
+  if (!message.has_file_name()) ss << "ImportModelArgs.file_name is not defined; ";
+
+  // Allow this to default to MasterModelConfig.pwt_name
+  // if (!message.has_model_name()) ss << "ImportModelArgs.model_name is not defined; ";
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::ImportDictionaryArgs& message) {
+  std::stringstream ss;
+  if (!message.has_file_name()) ss << "ImportDictionaryArgs.file_name is not defined; ";
+  if (!message.has_dictionary_name())
+    ss << "ImportDictionaryArgs.dictionary_name is not defined; ";
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::ProcessBatchesArgs& message) {
+  std::stringstream ss;
+
+  if (message.batch_filename_size() == 0 && message.batch_size() == 0)
+    ss << "Either ProcessBatchesArgs.batch_filename or ProcessBatchesArgs.batch must be specified; ";
+  if (message.batch_filename_size() != 0 && message.batch_size() != 0)
+    ss << "Only one of ProcessBatchesArgs.batch_filename, "
+       << "ProcessBatchesArgs.batch must be specified; ";
+
+  if (message.batch_filename_size() != 0 && message.batch_filename_size() != message.batch_weight_size())
+    ss << "Length mismatch in fields ProcessBatchesArgs.batch_filename and ProcessBatchesArgs.batch_weight";
+
+  if (message.batch_size() != 0 && message.batch_size() != message.batch_weight_size())
+    ss << "Length mismatch in fields ProcessBatchesArgs.batch_filename and ProcessBatchesArgs.batch_weight";
+
+  return ss.str();
+}
+
+inline std::string DescribeErrors(const ::artm::ImportBatchesArgs& message) {
+  std::stringstream ss;
+
+  if (message.batch_size() == 0)
+    ss << "Empty ImportBatchesArgs.batch field";
+
+  return ss.str();
+}
+
+// Empty ValidateMessage routines
+inline std::string DescribeErrors(const ::artm::GetTopicModelArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::GetThetaMatrixArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::MergeModelArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::RegularizeModelArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::NormalizeModelArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::RegularizerConfig& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::ExportDictionaryArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::ScoreData& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::MasterComponentInfo& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::GetDictionaryArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::GetMasterComponentInfoArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::ProcessBatchesResult& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::ClearThetaCacheArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::ClearScoreCacheArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::ClearScoreArrayCacheArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::ScoreArray& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::GetScoreArrayArgs& message) { return std::string(); }
+inline std::string DescribeErrors(const ::artm::CollectionParserConfig& message) { return std::string(); }
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// FixMessage routines (optional)
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+template<typename T>
+inline void FixMessage(T* message) {}
+
+template<>
+inline void FixMessage(::artm::TopicModel* message) {
+  const int token_size = message->token_size();
+  if ((message->class_id_size() == 0) && (token_size > 0)) {
+    message->mutable_class_id()->Reserve(token_size);
+    for (int i = 0; i < token_size; ++i)
+      message->add_class_id(::artm::core::DefaultClass);
+  }
+
+  if (message->topic_name_size() > 0)
+    message->set_num_topics(message->topic_name_size());
+}
+
+template<>
+inline void FixMessage(::artm::Batch* message) {
+  if (message->class_id_size() == 0) {
+    for (int i = 0; i < message->token_size(); ++i) {
+      message->add_class_id(DefaultClass);
+    }
+  }
+
+  // Upgrade token_count to token_weight
+  for (auto& item : *message->mutable_item()) {
+    for (auto& field : *item.mutable_field()) {
+      if (field.token_count_size() != 0 && field.token_weight_size() == 0) {
+        field.mutable_token_weight()->Reserve(field.token_count_size());
+        for (int i = 0; i < field.token_count_size(); ++i)
+          field.add_token_weight(static_cast<float>(field.token_count(i)));
+        field.clear_token_count();
+      }
+    }
+  }
+
+  // Upgrade away from Field
+  for (auto& item : *message->mutable_item()) {
+    for (auto& field : *item.mutable_field()) {
+      item.mutable_token_id()->MergeFrom(field.token_id());
+      item.mutable_token_weight()->MergeFrom(field.token_weight());
+    }
+
+    item.clear_field();
+  }
+}
+
+template<>
+inline void FixMessage(::artm::GetThetaMatrixArgs* message) {
+  if (message->has_use_sparse_format())
+    message->set_matrix_layout(MatrixLayout_Sparse);
+}
+
+template<>
+inline void FixMessage(::artm::GetTopicModelArgs* message) {
+  if (message->has_use_sparse_format())
+    message->set_matrix_layout(MatrixLayout_Sparse);
+}
+
+template<>
+inline void FixMessage(::artm::DictionaryData* message) {
+  if (message->class_id_size() == 0) {
+    for (int i = 0; i < message->token_size(); ++i) {
+      message->add_class_id(DefaultClass);
+    }
+  }
+}
+
+template<>
+inline void FixMessage(::artm::ProcessBatchesArgs* message) {
+  if (message->batch_weight_size() == 0) {
+    int size = message->batch_filename_size() > 0 ? message->batch_filename_size() : message->batch_size();
+    for (int i = 0; i < size; ++i)
+      message->add_batch_weight(1.0f);
+  }
+
+  for (int i = 0; i < message->batch_size(); ++i)
+    FixMessage(message->mutable_batch(i));
+
+  if (message->class_weight_size() == 0) {
+    for (int i = 0; i < message->class_id_size(); ++i)
+      message->add_class_weight(1.0f);
+  }
+}
+
+template<>
+inline void FixMessage(::artm::TopTokensScoreConfig* message) {
+  if (!message->has_class_id() || message->class_id().empty()) {
+    message->set_class_id(DefaultClass);
+  }
+}
+
+template<>
+inline void FixMessage(::artm::MasterModelConfig* message) {
+  if (message->class_weight_size() == 0) {
+    for (int i = 0; i < message->class_id_size(); ++i)
+      message->add_class_weight(1.0f);
+  }
+
+  if (message->reuse_theta())
+    message->set_cache_theta(true);
+
+  for (int i = 0; i < message->score_config_size(); ++i) {
+    ScoreConfig* score_config = message->mutable_score_config(i);
+    if (score_config->type() == ScoreType_TopTokens)
+      FixPackedMessage<TopTokensScoreConfig>(score_config->mutable_config());
+
+    if (!score_config->has_model_name())
+      score_config->set_model_name(message->pwt_name());
+  }
+}
+
+template<>
+inline void FixMessage(::artm::FitOfflineMasterModelArgs* message) {
+  if (message->batch_weight_size() == 0) {
+    for (int i = 0; i < message->batch_filename_size(); ++i)
+      message->add_batch_weight(1.0f);
+  }
+}
+
+template<>
+inline void FixMessage(::artm::FitOnlineMasterModelArgs* message) {
+  if (message->batch_weight_size() == 0) {
+    for (int i = 0; i < message->batch_filename_size(); ++i)
+      message->add_batch_weight(1.0f);
+  }
+
+  if (message->apply_weight_size() == 0) {
+    for (int i = 0; i < message->decay_weight_size(); ++i)
+      message->add_apply_weight(1.0f - message->decay_weight(i));
+  }
+
+  if (message->decay_weight_size() == 0) {
+    for (int i = 0; i < message->apply_weight_size(); ++i) {
+      message->add_decay_weight(1.0f - message->apply_weight(i));
+    }
+  }
+}
+
+template<>
+inline void FixMessage(::artm::TransformMasterModelArgs* message) {
+  for (int i = 0; i < message->batch_size(); ++i)
+    FixMessage(message->mutable_batch(i));
+}
+
+template<>
+inline void FixMessage(::artm::ImportBatchesArgs* message) {
+  for (int i = 0; i < message->batch_size(); ++i)
+    FixMessage(message->mutable_batch(i));
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// DescribeMessage routines (optional)
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+template<typename T>
+inline std::string DescribeMessage(const T& message) { return std::string(); }
+
+template<>
+inline std::string DescribeMessage(const ::artm::RegularizerSettings& message) {
+  std::stringstream ss;
+  ss << ", regularizer=(name:" << message.name() <<
+        ", tau:" << message.tau();
+  if (message.has_gamma())
+    ss << "gamma:" << message.gamma() << ")";
+  else
+    ss << "gamma:None" << ")";
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::InitializeModelArgs& message) {
+  std::stringstream ss;
+  ss << "InitializeModelArgs";
+  ss << ": model_name=" << message.model_name();
+
+  if (message.has_dictionary_name())
+    ss << ", dictionary_name=" << message.dictionary_name();
+  ss << ", topic_name_size=" << message.topic_name_size();
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::FilterDictionaryArgs& message) {
+  std::stringstream ss;
+  ss << "FilterDictionaryArgs";
+  ss << ": dictionary_name=" << message.dictionary_name();
+
+  if (message.has_class_id())
+    ss << ", class_id=" << message.class_id();
+  if (message.has_min_df())
+    ss << ", min_df=" << message.min_df();
+  if (message.has_max_df())
+    ss << ", max_df=" << message.max_df();
+  if (message.has_min_tf())
+    ss << ", min_tf=" << message.min_tf();
+  if (message.has_max_tf())
+    ss << ", max_tf=" << message.max_tf();
+
+  if (message.has_min_df_rate())
+    ss << ", min_df_rate=" << message.min_df_rate();
+  if (message.has_max_df_rate())
+    ss << ", max_df_rate=" << message.max_df_rate();
+
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::GatherDictionaryArgs& message) {
+  std::stringstream ss;
+  ss << "GatherDictionaryArgs";
+  ss << ": dictionary_target_name=" << message.dictionary_target_name();
+
+  if (message.has_data_path())
+    ss << ", data_path=" << message.data_path();
+  if (message.has_cooc_file_path())
+    ss << ", cooc_file_path=" << message.cooc_file_path();
+  if (message.has_vocab_file_path())
+    ss << ", vocab_file_path=" << message.vocab_file_path();
+  ss << ", symmetric_cooc_values=" << message.symmetric_cooc_values();
+
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::ProcessBatchesArgs& message) {
+  std::stringstream ss;
+  ss << "ProcessBatchesArgs";
+  ss << ": nwt_target_name=" << message.nwt_target_name();
+  ss << ", batch_filename_size=" << message.batch_filename_size();
+  ss << ", batch_size=" << message.batch_size();
+  ss << ", batch_weight_size=" << message.batch_weight_size();
+  ss << ", pwt_source_name=" << message.pwt_source_name();
+  ss << ", num_document_passes=" << message.num_document_passes();
+  for (int i = 0; i < message.regularizer_name_size(); ++i)
+    ss << ", regularizer=(name:" << message.regularizer_name(i) << ", tau:" << message.regularizer_tau(i) << ")";
+  for (int i = 0; i < message.class_id_size(); ++i)
+    ss << ", class=(" << message.class_id(i) << ":" << message.class_weight(i) << ")";
+  ss << ", reuse_theta=" << (message.reuse_theta() ? "yes" : "no");
+  ss << ", opt_for_avx=" << (message.opt_for_avx() ? "yes" : "no");
+  ss << ", predict_class_id=" << (message.predict_class_id());
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::NormalizeModelArgs& message) {
+  std::stringstream ss;
+  ss << "NormalizeModelArgs";
+  ss << ": pwt_target_name=" << message.pwt_target_name();
+  ss << ", nwt_source_name=" << message.nwt_source_name();
+  ss << ", rwt_source_name=" << message.rwt_source_name();
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::MergeModelArgs& message) {
+  std::stringstream ss;
+  ss << "MergeModelArgs";
+  ss << ": nwt_target_name=" << message.nwt_target_name();
+  for (int i = 0; i < message.nwt_source_name_size(); ++i)
+    ss << ", class=(" << message.nwt_source_name(i) << ":" << message.source_weight(i) << ")";
+  ss << ", topic_name_size=" << message.topic_name_size();
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::RegularizeModelArgs& message) {
+  std::stringstream ss;
+  ss << "RegularizeModelArgs";
+  ss << ": rwt_target_name=" << message.rwt_target_name();
+  ss << ", pwt_source_name=" << message.pwt_source_name();
+  ss << ", nwt_source_name=" << message.nwt_source_name();
+  for (int i = 0; i < message.regularizer_settings_size(); ++i)
+    DescribeMessage(message.regularizer_settings(i));
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::MasterModelConfig& message) {
+  std::stringstream ss;
+  ss << "MasterModelConfig";
+  ss << ": topic_name_size=" << message.topic_name_size();
+  for (int i = 0; i < message.class_id_size(); ++i)
+    ss << ", class=(" << message.class_id(i) << ":" << message.class_weight(i) << ")";
+  ss << ", score_config_size=" << message.score_config_size();
+  ss << ", num_processors=" << message.num_processors();
+  ss << ", pwt_name=" << message.pwt_name();
+  ss << ", nwt_name=" << message.nwt_name();
+  ss << ", num_document_passes=" << message.num_document_passes();
+  for (int i = 0; i < message.regularizer_config_size(); ++i)
+    ss << ", regularizer=("
+       << message.regularizer_config(i).name() << ":"
+       << message.regularizer_config(i).tau() << ")";
+  ss << ", reuse_theta=" << (message.reuse_theta() ? "yes" : "no");
+  ss << ", cache_theta=" << (message.cache_theta() ? "yes" : "no");
+  ss << ", opt_for_avx=" << (message.opt_for_avx() ? "yes" : "no");
+  ss << ", disk_cache_path" << message.disk_cache_path();
+
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::FitOfflineMasterModelArgs& message) {
+  std::stringstream ss;
+  ss << "FitOfflineMasterModelArgs";
+  ss << ", batch_filename_size=" << message.batch_filename_size();
+  ss << ", batch_weight_size=" << message.batch_weight_size();
+  ss << ", num_collection_passes=" << message.num_collection_passes();
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::FitOnlineMasterModelArgs& message) {
+  std::stringstream ss;
+  ss << "FitOnlineMasterModelArgs";
+  ss << ", batch_filename_size=" << message.batch_filename_size();
+  ss << ", batch_weight_size=" << message.batch_weight_size();
+  ss << ", update_after:apply_weight:decay_weight=(";
+  for (int i = 0; i < message.update_after_size(); ++i) {
+    if (i != 0) ss << ", ";
+    ss << message.update_after(i) << ":";
+    ss << message.apply_weight(i) << ":";
+    ss << message.decay_weight(i);
+  }
+  ss << ")";
+  ss << ", async=" << (message.async() ? "yes" : "no");
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::TransformMasterModelArgs& message) {
+  std::stringstream ss;
+  ss << "TransformMasterModelArgs";
+  ss << ", batch_filename_size=" << message.batch_filename_size();
+  ss << ", batch_size=" << message.batch_size();
+  ss << ", theta_matrix_type=" << message.theta_matrix_type();
+  ss << ", predict_class_id=" << message.predict_class_id();
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::GetScoreValueArgs& message) {
+  std::stringstream ss;
+  ss << "GetScoreValueArgs";
+  ss << ", score_name=" << message.score_name();
+  return ss.str();
+}
+
+template<>
+inline std::string DescribeMessage(const ::artm::ConfigureLoggingArgs& message) {
+  std::stringstream ss;
+  ss << "ConfigureLoggingArgs";
+  ss << ", log_dir=" << (message.has_log_dir() ? message.log_dir() : "");
+
+  ss << ", minloglevel=" << (message.has_minloglevel() ? to_string(message.minloglevel()) : "");
+  ss << ", stderrthreshold=" << (message.has_stderrthreshold() ? to_string(message.stderrthreshold()) : "");
+
+  ss << ", logtostderr=" << (message.has_logtostderr() ? (message.logtostderr() ? "yes" : "no") : "");
+  ss << ", colorlogtostderr=" << (message.has_colorlogtostderr() ? (message.colorlogtostderr() ? "yes" : "no") : "");
+  ss << ", alsologtostderr=" << (message.has_alsologtostderr() ? (message.alsologtostderr() ? "yes" : "no") : "");
+
+  ss << ", logbufsecs=" << (message.has_logbufsecs() ? to_string(message.logbufsecs()) : "");
+  ss << ", logbuflevel=" << (message.has_logbuflevel() ? to_string(message.logbuflevel()) : "");
+
+  ss << ", max_log_size=" << (message.has_max_log_size() ? to_string(message.max_log_size()) : "");
+
+  ss << ", stop_logging_if_full_disk=" <<
+    (message.has_stop_logging_if_full_disk() ? (message.stop_logging_if_full_disk() ? "yes" : "no") : "");
+
+  return ss.str();
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// Templates
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+inline bool ValidateMessage(const T& message, bool throw_error) {
+  std::string ss = DescribeErrors(message);
+
+  if (ss.empty())
+    return true;
+
+  if (throw_error)
+    BOOST_THROW_EXCEPTION(InvalidOperation(ss));
+  LOG(WARNING) << ss;
+  return false;
+}
+
+template <typename T>
+inline bool FixAndValidateMessage(T* message, bool throw_error) {
+  FixMessage(message);
+  return ValidateMessage(*message, throw_error);
+}
+
+template<typename T>
+inline void FixPackedMessage(std::string* message) {
+  T config;
+  if (config.ParseFromString(*message)) {
+    FixMessage<T>(&config);
+    config.SerializeToString(message);
+  }
+}
+
+}  // namespace core
+}  // namespace artm
+
+
+#endif  // SRC_ARTM_CORE_CHECK_MESSAGES_H_

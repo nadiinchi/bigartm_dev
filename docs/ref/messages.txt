@@ -1,0 +1,2167 @@
+========
+Messages
+========
+
+This document explains all protobuf messages that can be transfered between the user code and BigARTM library.
+
+.. warning::
+
+   Remember that all fields is marked as *optional*
+   to enhance backwards compatibility of the binary protobuf format.
+   Some fields will result in run-time exception when not specified.
+   Please refer to the documentation of each field for more details.
+
+Note that we discourage any usage of fields marked as *obsolete*.
+Those fields will be removed in future releases.
+
+.. _DoubleArray:
+
+DoubleArray
+===========
+
+.. class:: messages_pb2.DoubleArray
+
+Represents an array of double-precision floating point values.
+
+.. code-block:: bash
+
+  message DoubleArray {
+    repeated double value = 1 [packed = true];
+  }
+
+
+.. _FloatArray:
+
+FloatArray
+==========
+
+.. class:: messages_pb2.FloatArray
+
+Represents an array of single-precision floating point values.
+
+.. code-block:: bash
+
+  message FloatArray {
+    repeated float value = 1 [packed = true];
+  }
+
+
+.. _BoolArray:
+
+BoolArray
+=========
+
+.. class:: messages_pb2.BoolArray
+
+Represents an array of boolean values.
+
+.. code-block:: bash
+
+  message BoolArray {
+    repeated bool value = 1 [packed = true];
+  }
+
+.. _IntArray:
+
+IntArray
+========
+
+.. class:: messages_pb2.IntArray
+
+Represents an array of integer values.
+
+.. code-block:: bash
+
+  message IntArray {
+    repeated int32 value = 1 [packed = true];
+  }
+
+.. _Item:
+
+Item
+====
+
+.. class:: messages_pb2.Item
+
+Represents a unit of textual information.
+A typical example of an item is a document that belongs to some text collection.
+
+.. code-block:: bash
+
+  message Item {
+    optional int32 id = 1;
+    repeated Field field = 2;
+    optional string title = 3;
+  }
+
+.. attribute:: Item.id
+
+   An integer identifier of the item.
+
+.. attribute:: Item.field
+
+   A set of all fields withing the item.
+
+.. attribute:: Item.title
+
+   An optional title of the item.
+
+.. _Field:
+
+Field
+=====
+
+.. class:: messages_pb2.Field
+
+Represents a field withing an item.
+The idea behind fields is that each item might have its
+title, author, body, abstract, actual text, links, year of publication, etc. Each of this
+entities should be represented as a Field. The topic model defines how those fields
+should be taken into account when BigARTM infers a topic model. Currently each field is
+represented as "bag-of-words" --- each token is listed together with the number of its
+occurrences. Note that each Field is always part of an Item, Item is part of a Batch, and
+a batch always contains a list of tokens. Therefore, each Field just lists the indexes
+of tokens in the Batch.
+
+.. code-block:: bash
+
+  message Field {
+    optional string name = 1 [default = "@body"];
+    repeated int32 token_id = 2;
+    repeated int32 token_count = 3;
+    repeated int32 token_offset = 4;
+
+    optional string string_value = 5;
+    optional int64 int_value = 6;
+    optional double double_value = 7;
+    optional string date_value = 8;
+
+    repeated string string_array = 16;
+    repeated int64 int_array = 17;
+    repeated double double_array = 18;
+    repeated string date_array = 19;
+  }
+
+
+.. _Batch:
+
+Batch
+=====
+
+.. class:: messages_pb2.Batch
+
+Represents a set of items.
+In BigARTM a batch is never split into smaller parts. When it comes to concurrency this means
+that each batch goes to a single processor. Two batches can be processed concurrently, but
+items in one batch are always processed sequentially.
+
+.. code-block:: bash
+
+  message Batch {
+    repeated string token = 1;
+    repeated Item item = 2;
+    repeated string class_id = 3;
+    optional string description = 4;
+    optional string id = 5;
+  }
+
+.. attribute:: Batch.token
+
+   A set value that defines all tokens than may appear in the batch.
+
+.. attribute:: Batch.item
+
+   A set of items of the batch.
+
+.. attribute:: Batch.class_id
+
+   A set of values that define for classes (modalities) of tokens.
+   This repeated field must have the same length as :attr:`token`.
+   This value is optional, use an empty list indicate that all tokens belong to the default class.
+
+.. attribute:: Batch.description
+
+   An optional text description of the batch.
+   You may describe for example the source of the batch,
+   preprocessing technique and the structure of its fields.
+
+.. attribute:: Batch.id
+
+   Unique identifier of the batch in a form of a GUID
+   (example: ``4fb38197-3f09-4871-9710-392b14f00d2e``).
+   This field is required.
+
+.. _Stream:
+
+Stream
+======
+
+.. class:: messages_pb2.Stream
+
+Represents a configuration of a stream.
+Streams provide a mechanism to split the entire collection into virtual subsets (for example,
+the 'train' and 'test' streams).
+
+.. code-block:: bash
+
+  message Stream {
+    enum Type {
+      Global = 0;
+      ItemIdModulus = 1;
+    }
+
+    optional Type type = 1 [default = Global];
+    optional string name = 2 [default = "@global"];
+    optional int32 modulus = 3;
+    repeated int32 residuals = 4;
+  }
+
+.. attribute:: Stream.type
+
+   A value that defines the type of the stream.
+
+   ================= ========================================================
+   ``Global``        | Defines a stream containing all items in the collection.
+
+   ``ItemIdModulus`` | Defines a stream containing all items with ID that
+                     | matches modulus and residuals. An item belongs to the
+                     | stream iff the modulo reminder of item ID is contained
+                     | in the residuals field.
+   ================= ========================================================
+
+.. attribute:: Stream.name
+
+   A value that defines the name of the stream.
+   The name must be unique across all streams defined in the master component.
+
+
+.. _MasterComponentConfig:
+
+MasterComponentConfig
+=====================
+
+.. class:: messages_pb2.MasterComponentConfig
+
+Represents a configuration of a master component.
+
+.. code-block:: bash
+
+  message MasterComponentConfig {
+    optional string disk_path = 2;
+    repeated Stream stream = 3;
+    optional bool compact_batches = 4 [default = true];
+    optional bool cache_theta = 5 [default = false];
+    optional int32 processors_count = 6 [default = 1];
+    optional int32 processor_queue_max_size = 7 [default = 10];
+    optional int32 merger_queue_max_size = 8 [default = 10];
+    repeated ScoreConfig score_config = 9;
+    optional bool online_batch_processing = 13 [default = false];  // obsolete in BigARTM v0.5.8
+    optional string disk_cache_path = 15;
+  }
+
+.. attribute:: MasterComponentConfig.disk_path
+
+  A value that defines the disk location to store or load the collection.
+
+.. attribute:: MasterComponentConfig.stream
+
+  A set of all data streams to configure in master component.
+  Streams can overlap if needed.
+
+.. attribute:: MasterComponentConfig.compact_batches
+
+  A flag indicating whether to compact batches in AddBatch() operation.
+  Compaction is a process that shrinks the dictionary of each batch by removing all
+  unused tokens.
+
+.. attribute:: MasterComponentConfig.cache_theta
+
+  A flag indicating whether to cache theta matrix. Theta matrix defines the discrete
+  probability distribution of each document across the topics in topic model. By default
+  BigARTM infers this distribution every time it processes the document. Option
+  'cache_theta' allows to cache this theta matrix and re-use theha values when the same
+  document is processed on the next iteration. This option must be set to 'true' before
+  calling method :c:func:`ArtmRequestThetaMatrix`.
+
+.. attribute:: MasterComponentConfig.processors_count
+
+  A value that defines the number of concurrent processor components.
+  The number of processors should normally not exceed the number of CPU cores.
+
+.. attribute:: MasterComponentConfig.processor_queue_max_size
+
+  A value that defines the maximal size of the processor queue.
+  Processor queue contains batches, prefetch from disk into memory.
+  Recommendations regarding the maximal queue size are as follows:
+
+  * the queue size should be at least as large as the number of concurrent
+    processors;
+
+.. attribute:: MasterComponentConfig.merger_queue_max_size
+
+  A value that defines the maximal size of the merger queue.
+  Merger queue size contains an incremental updates of topic model,
+  produced by processor components.
+  Try reducing this parameter if BigARTM consumes too much memory.
+
+.. attribute:: MasterComponentConfig.score_config
+
+  A set of all scores, available for calculation.
+
+.. attribute:: MasterComponentConfig.online_batch_processing
+
+  Obsolete in BigARTM v0.5.8.
+
+.. attribute:: MasterComponentConfig.disk_cache_path
+
+  A value that defines a writtable disk location where this master component can store some temporary files.
+  This can reduce memory usage, particularly when :attr:`cache_theta` option is enabled.
+  Note that on clean shutdown master component will will be cleaned this folder automatically,
+  but otherwise it is your responsibility to clean this folder to avoid running out of disk.
+
+
+.. _ModelConfig:
+
+ModelConfig
+===========
+
+.. class:: messages_pb2.ModelConfig
+
+Represents a configuration of a topic model.
+
+.. code-block:: bash
+
+  message ModelConfig {
+    optional string name = 1 [default = "@model"];
+    optional int32 topics_count = 2 [default = 32];
+    repeated string topic_name = 3;
+    optional bool enabled = 4 [default = true];
+    optional int32 inner_iterations_count = 5 [default = 10];
+    optional string field_name = 6 [default = "@body"];  // obsolete in BigARTM v0.5.8
+    optional string stream_name = 7 [default = "@global"];
+    repeated string score_name = 8;
+    optional bool reuse_theta = 9 [default = false];
+    repeated string regularizer_name = 10;
+    repeated double regularizer_tau = 11;
+    repeated string class_id = 12;
+    repeated float class_weight = 13;
+    optional bool use_sparse_bow = 14 [default = true];
+    optional bool use_random_theta = 15 [default = false];
+    optional bool use_new_tokens = 16 [default = true];
+    optional bool opt_for_avx = 17 [default = true];
+  }
+
+.. attribute:: ModelConfig.name
+
+   A value that defines the name of the topic model.
+   The name must be unique across all models defined in the master component.
+
+.. attribute:: ModelConfig.topics_count
+
+   A value that defines the number of topics in the topic model.
+
+.. attribute:: ModelConfig.topic_name
+
+   A repeated field that defines the names of the topics.
+   All topic names must be unique within each topic model.
+   This field is optional, but either :attr:`topics_count` or :attr:`topic_name` must be specified.
+   If both specified, then :attr:`topics_count` will be ignored, and the number of
+   topics in the model will be based on the length of :attr:`topic_name` field.
+   When :attr:`topic_name` is not specified the names for all topics will be autogenerated.
+
+.. attribute:: ModelConfig.enabled
+
+   A flag indicating whether to update the model during iterations.
+
+.. attribute:: ModelConfig.inner_iterations_count
+
+   A value that defines the fixed number of iterations, performed to infer the theta
+   distribution for each document.
+
+.. attribute:: ModelConfig.field_name
+
+   Obsolete in BigARTM v0.5.8
+
+.. attribute:: ModelConfig.stream_name
+
+   A value that defines which stream the model should use.
+
+.. attribute:: ModelConfig.score_name
+
+   A set of names that defines which scores should be calculated for the model.
+
+.. attribute:: ModelConfig.reuse_theta
+
+   A flag indicating whether the model should reuse theta values cached on the previous
+   iterations. This option require cache_theta flag to be set to 'true' in MasterComponentConfig.
+
+.. attribute:: ModelConfig.regularizer_name
+
+   A set of names that define which regularizers should be enabled for the model.
+   This repeated field must have the same length as :attr:`regularizer_tau`.
+
+.. attribute:: ModelConfig.regularizer_tau
+
+   A set of values that define the regularization coefficients of the corresponding regularizer.
+   This repeated field must have the same length as :attr:`regularizer_name`.
+
+.. attribute:: ModelConfig.class_id
+
+   A set of values that define for which classes (modalities) to build topic model.
+   This repeated field must have the same length as :attr:`class_weight`.
+
+.. attribute:: ModelConfig.class_weight
+
+   A set of values that define the weights of the corresponding classes (modalities).
+   This repeated field must have the same length as :attr:`class_id`.
+   This value is optional, use an empty list to set equal weights for all classes.
+
+.. attribute:: ModelConfig.use_sparse_bow
+
+   A flag indicating whether to use sparse representation of the Bag-of-words data.
+   The default setting (*use_sparse_bow = true*) is best suited for processing textual collections
+   where every token is represented in a small fraction of all documents.
+   Dense representation (*use_sparse_bow = false*) better fits for non-textual collections
+   (for example for matrix factorization).
+
+   Note that :attr:`class_weight` and :attr:`class_id` must not be used together with *use_sparse_bow=false*.
+
+.. attribute:: ModelConfig.use_random_theta
+
+   A flag indicating whether to initialize ``p(t|d)`` distribution with random uniform distribution.
+   The default setting (*use_random_theta = false*) sets ``p(t|d) = 1/T``,
+   where ``T`` stands for :attr:`topics_count`.
+   Note that :attr:`reuse_theta` flag takes priority over *use_random_theta* flag,
+   so that if *reuse_theta = true* and there is a cache entry from previous iteration the cache entry
+   will be used regardless of *use_random_theta* flag.
+
+.. attribute:: ModelConfig.use_new_tokens
+
+   A flag indicating whether to automatically include new tokens into the topic model.
+   This setting is set to *True* by default. As a result, every new token observed in batches
+   is automatically incorporated into topic model during the next model synchronization (:c:func:`ArtmSynchronizeModel`).
+   The ``n_wt_`` weights for new tokens randomly generated from ``[0..1]`` range.
+
+.. attribute:: ModelConfig.opt_for_avx
+
+   An experimental flag that allows to disable AVX optimization in processor.
+   By default this option is enabled as on average it adds ca. 40% speedup on physical hardware.
+   You may want to disable this option if you are running on Windows inside virtual machine,
+   or in situation when BigARTM performance degrades from iteration to interation.
+
+   This option does not affect the results, and is only intended for advanced users experimenting with BigARTM performance.
+
+
+.. _RegularizerConfig:
+
+RegularizerConfig
+=================
+
+.. class:: messages_pb2.RegularizerConfig
+
+Represents a configuration of a general regularizer.
+
+.. code-block:: bash
+
+  message RegularizerConfig {
+    enum Type {
+      SmoothSparseTheta = 0;
+      SmoothSparsePhi = 1;
+      DecorrelatorPhi = 2;
+      LabelRegularizationPhi = 4;
+    }
+
+    optional string name = 1;
+    optional Type type = 2;
+    optional bytes config = 3;
+  }
+
+
+.. attribute:: RegularizerConfig.name
+
+   A value that defines the name of the regularizer.
+   The name must be unique across all names defined in the master component.
+
+.. attribute:: RegularizerConfig.type
+
+   A value that defines the type of the regularizer.
+
+   ========================== =======================================================================
+   ``SmoothSparseTheta``      Smooth-sparse regularizer for theta matrix
+
+   ``SmoothSparsePhi``        Smooth-sparse regularizer for phi matrix
+
+   ``DecorrelatorPhi``        Decorrelator regularizer for phi matrix
+
+   ``LabelRegularizationPhi`` Label regularizer for phi matrix
+   ========================== =======================================================================
+
+
+.. attribute:: RegularizerConfig.config
+
+   A serialized protobuf message that describes regularizer config for
+   the specific regularizer type.
+
+
+.. _SmoothSparseThetaConfig:
+
+SmoothSparseThetaConfig
+=======================
+
+.. class:: messages_pb2.SmoothSparseThetaConfig
+
+Represents a configuration of a SmoothSparse Theta regularizer.
+
+.. code-block:: bash
+
+  message SmoothSparseThetaConfig {
+    repeated string topic_name = 1;
+    repeated float alpha_iter = 2;
+  }
+
+.. attribute:: SmoothSparseThetaConfig.topic_name
+
+   A set of topic names that defines which topics in the model should be regularized.
+   This value is optional, use an empty list to regularize all topics.
+
+.. attribute:: SmoothSparseThetaConfig.alpha_iter
+
+   A field of the same length as :attr:`ModelConfig.inner_iterations_count`
+   that defines relative regularization weight for every iteration inner iterations.
+   The actual regularization value is calculated as product of ``alpha_iter[i]``
+   and :attr:`ModelConfig.regularizer_tau`.
+
+   To specify different regularization weight for different topics
+   create multiple regularizers with different :attr:`topic_name` set,
+   and use different values of :attr:`ModelConfig.regularizer_tau`.
+
+.. _SmoothSparsePhiConfig:
+
+SmoothSparsePhiConfig
+=====================
+
+.. class:: messages_pb2.SmoothSparsePhiConfig
+
+Represents a configuration of a SmoothSparse Phi regularizer.
+
+.. code-block:: bash
+
+  message SmoothSparsePhiConfig {
+    repeated string topic_name = 1;
+    repeated string class_id = 2;
+    optional string dictionary_name = 3;
+  }
+
+.. attribute:: SmoothSparsePhiConfig.topic_name
+
+   A set of topic names that defines which topics in the model should be regularized.
+   This value is optional, use an empty list to regularize all topics.
+
+.. attribute:: SmoothSparsePhiConfig.class_id
+
+   This set defines which classes in the model should be regularized.
+   This value is optional, use an empty list to regularize all classes.
+
+.. attribute:: SmoothSparsePhiConfig.dictionary_name
+
+   An optional value defining the name of the dictionary to use.
+   The entries of the dictionary are expected to have :attr:`DictionaryEntry.key_token`,
+   :attr:`DictionaryEntry.class_id` and :attr:`DictionaryEntry.value` fields.
+   The actual regularization value will be calculated as a product of 
+   :attr:`DictionaryEntry.value` and :attr:`ModelConfig.regularizer_tau`.
+
+   This value is optional, if no dictionary is specified than all tokens will be
+   regularized with the same weight.
+
+.. _DecorrelatorPhiConfig:
+
+DecorrelatorPhiConfig
+=====================
+
+.. class:: messages_pb2.DecorrelatorPhiConfig
+
+Represents a configuration of a Decorrelator Phi regularizer.
+
+.. code-block:: bash
+
+  message DecorrelatorPhiConfig {
+    repeated string topic_name = 1;
+    repeated string class_id = 2;
+  }
+
+.. attribute:: DecorrelatorPhiConfig.topic_name
+
+   A set of topic names that defines which topics in the model should be regularized.
+   This value is optional, use an empty list to regularize all topics.
+
+.. attribute:: DecorrelatorPhiConfig.class_id
+
+   This set defines which classes in the model should be regularized.
+   This value is optional, use an empty list to regularize all classes.
+
+
+.. _LabelRegularizationPhiConfig:
+
+LabelRegularizationPhiConfig
+============================
+
+.. class:: messages_pb2.LabelRegularizationPhiConfig
+
+Represents a configuration of a Label Regularizer Phi regularizer.
+
+.. code-block:: bash
+
+  message LabelRegularizationPhiConfig {
+    repeated string topic_name = 1;
+    repeated string class_id = 2;
+    optional string dictionary_name = 3;
+  }
+
+.. attribute:: LabelRegularizationPhiConfig.topic_name
+
+   A set of topic names that defines which topics in the model should be regularized.
+
+.. attribute:: LabelRegularizationPhiConfig.class_id
+
+   This set defines which classes in the model should be regularized.
+   This value is optional, use an empty list to regularize all classes.
+
+.. attribute:: LabelRegularizationPhiConfig.dictionary_name
+
+   An optional value defining the name of the dictionary to use.
+
+
+.. _RegularizerInternalState:
+
+RegularizerInternalState
+========================
+
+.. class:: messages_pb2.RegularizerInternalState
+
+Represents an internal state of a general regularizer.
+
+.. code-block:: bash
+
+  message RegularizerInternalState {
+    enum Type {
+      MultiLanguagePhi = 5;
+    }
+
+    optional string name = 1;
+    optional Type type = 2;
+    optional bytes data = 3;
+  }
+
+
+.. _DictionaryConfig:
+
+DictionaryConfig
+================
+
+.. class:: messages_pb2.DictionaryConfig
+
+Represents a static dictionary.
+
+.. code-block:: bash
+
+  message DictionaryConfig {
+    optional string name = 1;
+    repeated DictionaryEntry entry = 2;
+    optional int32 total_token_count = 3;
+    optional int32 total_items_count = 4;
+  }
+
+.. attribute:: DictionaryConfig.name
+
+   A value that defines the name of the dictionary.
+   The name must be unique across all dictionaries defined in the master component.
+
+.. attribute:: DictionaryConfig.entry
+
+   A list of all entries of the dictionary.
+
+.. attribute:: DictionaryConfig.total_token_count
+
+   A sum of :attr:`DictionaryEntry.token_count` across all entries in this dictionary.
+   The value is optional and might be missing when all entries in the dictionary does not carry
+   the :attr:`DictionaryEntry.token_count` attribute.
+
+.. attribute:: DictionaryConfig.total_items_count
+
+   A sum of :attr:`DictionaryEntry.items_count` across all entries in this dictionary.
+   The value is optional and might be missing when all entries in the dictionary does not carry
+   the :attr:`DictionaryEntry.items_count` attribute.
+
+
+.. _DictionaryEntry:
+
+DictionaryEntry
+===============
+
+.. class:: messages_pb2.DictionaryEntry
+
+Represents one entry in a static dictionary.
+
+.. code-block:: bash
+
+   message DictionaryEntry {
+     optional string key_token = 1;
+     optional string class_id = 2;
+     optional float value = 3;
+     repeated string value_tokens = 4;
+     optional FloatArray values = 5;
+     optional int32 token_count = 6;
+     optional int32 items_count = 7;
+   }
+
+.. attribute:: DictionaryEntry.key_token
+
+  A token that defines the key of the entry.
+
+.. attribute:: DictionaryEntry.class_id
+
+  The class of the :attr:`DictionaryEntry.key_token`.
+
+.. attribute:: DictionaryEntry.value
+
+  An optional generic value, associated with the entry.
+  The meaning of this value depends on the usage of the dictionary.
+
+.. attribute:: DictionaryEntry.token_count
+
+  An optional value, indicating the overall number of token occurrences in some collection.
+
+.. attribute:: DictionaryEntry.items_count
+
+  An optional value, indicating the overall number of documents containing the token.
+
+
+.. _ScoreConfig:
+
+ScoreConfig
+===========
+
+.. class:: messages_pb2.ScoreConfig
+
+Represents a configuration of a general score.
+
+.. code-block:: bash
+
+  message ScoreConfig {
+    enum Type {
+      Perplexity = 0;
+      SparsityTheta = 1;
+      SparsityPhi = 2;
+      ItemsProcessed = 3;
+      TopTokens = 4;
+      ThetaSnippet = 5;
+      TopicKernel = 6;
+    }
+
+    optional string name = 1;
+    optional Type type = 2;
+    optional bytes config = 3;
+  }
+
+.. attribute:: ScoreConfig.name
+
+   A value that defines the name of the score.
+   The name must be unique across all names defined in the master component.
+
+.. attribute:: ScoreConfig.type
+
+   A value that defines the type of the score.
+
+   ================== ====================================================
+   ``Perplexity``     Defines a config of the Perplexity score
+
+   ``SparsityTheta``  Defines a config of the SparsityTheta score
+
+   ``SparsityPhi``    Defines a config of the SparsityPhi score
+
+   ``ItemsProcessed`` Defines a config of the ItemsProcessed score
+
+   ``TopTokens``      Defines a config of the TopTokens score
+
+   ``ThetaSnippet``   Defines a config of the ThetaSnippet score
+
+   ``TopicKernel``    Defines a config of the TopicKernel score
+   ================== ====================================================
+
+.. attribute:: ScoreConfig.config
+
+   A serialized protobuf message that describes score config for the specific score type.
+
+
+.. _ScoreData:
+
+ScoreData
+=========
+
+.. class:: messages_pb2.ScoreData
+
+Represents a general result of score calculation.
+
+.. code-block:: bash
+
+  message ScoreData {
+    enum Type {
+      Perplexity = 0;
+      SparsityTheta = 1;
+      SparsityPhi = 2;
+      ItemsProcessed = 3;
+      TopTokens = 4;
+      ThetaSnippet = 5;
+      TopicKernel = 6;
+    }
+
+    optional string name = 1;
+    optional Type type = 2;
+    optional bytes data = 3;
+  }
+
+.. attribute:: ScoreData.name
+
+   A value that describes the name of the score.
+   This name will match the name of the corresponding score config.
+
+.. attribute:: ScoreData.type
+
+   A value that defines the type of the score.
+
+   ================== =========================================================
+   ``Perplexity``     Defines a Perplexity score data
+
+   ``SparsityTheta``  Defines a SparsityTheta score data
+
+   ``SparsityPhi``    Defines a SparsityPhi score data
+
+   ``ItemsProcessed`` Defines a ItemsProcessed score data
+
+   ``TopTokens``      Defines a TopTokens score data
+
+   ``ThetaSnippet``   Defines a ThetaSnippet score data
+
+   ``TopicKernel``    Defines a TopicKernel score data
+   ================== =========================================================
+
+.. attribute:: ScoreData.data
+
+   A serialized protobuf message that provides the specific score result.
+
+
+.. _PerplexityScoreConfig:
+
+PerplexityScoreConfig
+=====================
+
+.. class:: messages_pb2.PerplexityScoreConfig
+
+Represents a configuration of a perplexity score.
+
+.. code-block:: bash
+
+  message PerplexityScoreConfig {
+    enum Type {
+      UnigramDocumentModel = 0;
+      UnigramCollectionModel = 1;
+    }
+
+    optional string field_name = 1 [default = "@body"];  // obsolete in BigARTM v0.5.8
+    optional string stream_name = 2 [default = "@global"];
+    optional Type model_type = 3 [default = UnigramDocumentModel];
+    optional string dictionary_name = 4;
+    optional float theta_sparsity_eps = 5 [default = 1e-37];
+    repeated string theta_sparsity_topic_name = 6;
+  }
+
+.. attribute:: PerplexityScoreConfig.field_name
+
+   Obsolete in BigARTM v0.5.8
+
+.. attribute:: PerplexityScoreConfig.stream_name
+
+   A value that defines which stream should be used in perplexity calculation.
+
+
+.. _PerplexityScore:
+
+PerplexityScore
+===============
+
+.. class:: messages_pb2.PerplexityScore
+
+Represents a result of calculation of a perplexity score.
+
+.. code-block:: bash
+
+  message PerplexityScore {
+    optional double value = 1;
+    optional double raw = 2;
+    optional double normalizer = 3;
+    optional int32 zero_words = 4;
+    optional double theta_sparsity_value = 5;
+    optional int32 theta_sparsity_zero_topics = 6;
+    optional int32 theta_sparsity_total_topics = 7;
+  }
+
+.. attribute:: PerplexityScore.value
+
+   A perplexity value which is calculated as exp(-raw/normalizer).
+
+.. attribute:: PerplexityScore.raw
+
+   A numerator of perplexity calculation. 
+   This value is equal to the likelihood of the topic model.
+
+.. attribute:: PerplexityScore.normalizer
+
+   A denominator of perplexity calculation.
+   This value is equal to the total number of tokens in all processed items.
+
+.. attribute:: PerplexityScore.zero_words
+
+   A number of tokens that have zero probability p(w|t,d) in a document.
+   Such tokens are evaluated based on to unigram document model or unigram colection model.
+
+.. attribute:: PerplexityScore.theta_sparsity_value
+
+   A fraction of zero entries in the theta matrix.
+
+.. _SparsityThetaScoreConfig:
+
+SparsityThetaScoreConfig
+========================
+
+.. class:: messages_pb2.SparsityThetaScoreConfig
+
+Represents a configuration of a theta sparsity score.
+
+.. code-block:: bash
+
+  message SparsityThetaScoreConfig {
+    optional string field_name = 1 [default = "@body"];  // obsolete in BigARTM v0.5.8
+    optional string stream_name = 2 [default = "@global"];
+    optional float eps = 3 [default = 1e-37];
+    repeated string topic_name = 4;
+  }
+
+.. attribute:: SparsityThetaScoreConfig.field_name
+
+   Obsolete in BigARTM v0.5.8
+
+.. attribute:: SparsityThetaScoreConfig.stream_name
+
+   A value that defines which stream should be used in theta sparsity calculation.
+
+.. attribute:: SparsityThetaScoreConfig.eps
+
+   A small value that defines zero threshold for theta probabilities.
+   Theta values below the threshold will be counted as zeros when calculating theta sparsity score.
+
+.. attribute:: SparsityThetaScoreConfig.topic_name
+
+   A set of topic names that defines which topics should be used for score calculation.
+   The names correspond to :attr:`ModelConfig.topic_name`.
+   This value is optional, use an empty list to calculate the score for all topics.
+
+.. _SparsityThetaScore:
+
+SparsityThetaScore
+==================
+
+.. class:: messages_pb2.SparsityThetaScoreConfig
+
+Represents a result of calculation of a theta sparsity score.
+
+.. code-block:: bash
+
+  message SparsityThetaScore {
+    optional double value = 1;
+    optional int32 zero_topics = 2;
+    optional int32 total_topics = 3;
+  }
+
+.. attribute:: SparsityThetaScore.value
+
+   A value of theta sparsity that is calculated as zero_topics / total_topics.
+
+.. attribute:: SparsityThetaScore.zero_topics
+
+   A numerator of theta sparsity score.
+   A number of topics that have zero probability in a topic-item distribution.
+
+.. attribute:: SparsityThetaScore.total_topics
+
+   A denominator of theta sparsity score.
+   A total number of topics in a topic-item distributions that are used in theta sparsity calculation.
+
+
+.. _SparsityPhiScoreConfig:
+
+SparsityPhiScoreConfig
+======================
+
+.. class:: messages_pb2.SparsityPhiScoreConfig
+
+Represents a configuration of a sparsity phi score.
+
+.. code-block:: bash
+
+  message SparsityPhiScoreConfig {
+    optional float eps = 1 [default = 1e-37];
+    optional string class_id = 2;
+    repeated string topic_name = 3;
+  }
+
+.. attribute:: SparsityPhiScoreConfig.eps
+
+   A small value that defines zero threshold for phi probabilities.
+   Phi values below the threshold will be counted as zeros when calculating phi sparsity score.
+
+.. attribute:: SparsityPhiScoreConfig.class_id
+
+   A value that defines the class of tokens to use for score calculation.
+   This value corresponds to :attr:`ModelConfig.class_id` field.
+   This value is optional. By default the score will be calculated for
+   the default class ('@default_class').
+
+.. attribute:: SparsityPhiScoreConfig.topic_name
+
+   A set of topic names that defines which topics should be used for score calculation.
+   This value is optional, use an empty list to calculate the score for all topics.
+
+
+.. _SparsityPhiScore:
+
+SparsityPhiScore
+================
+
+.. class:: messages_pb2.SparsityPhiScore
+
+Represents a result of calculation of a phi sparsity score.
+
+.. code-block:: bash
+
+  message SparsityPhiScore {
+    optional double value = 1;
+    optional int32 zero_tokens = 2;
+    optional int32 total_tokens = 3;
+  }
+
+.. attribute:: SparsityPhiScore.value
+
+   A value of phi sparsity that is calculated as zero_tokens / total_tokens.
+
+.. attribute:: SparsityPhiScore.zero_tokens
+
+   A numerator of phi sparsity score.
+   A number of tokens that have zero probability in a token-topic distribution.
+
+.. attribute:: SparsityPhiScore.total_tokens
+
+   A denominator of phi sparsity score.
+   A total number of tokens in a token-topic distributions that are used in phi sparsity calculation.
+
+
+.. _ItemsProcessedScoreConfig:
+
+ItemsProcessedScoreConfig
+=========================
+
+.. class:: messages_pb2.ItemsProcessedScoreConfig
+
+Represents a configuration of an items processed score.
+
+.. code-block:: bash
+
+  message ItemsProcessedScoreConfig {
+    optional string field_name = 1 [default = "@body"];  // obsolete in BigARTM v0.5.8
+    optional string stream_name = 2 [default = "@global"];
+  }
+
+.. attribute:: ItemsProcessedScoreConfig.field_name
+
+   Obsolete in BigARTM v0.5.8
+
+.. attribute:: ItemsProcessedScoreConfig.stream_name
+
+   A value that defines which stream should be used in calculation of processed items.
+
+
+.. _ItemsProcessedScore:
+
+ItemsProcessedScore
+===================
+
+.. class:: messages_pb2.ItemsProcessedScore
+
+Represents a result of calculation of an items processed score.
+
+.. code-block:: bash
+
+  message ItemsProcessedScore {
+    optional int32 value = 1;
+  }
+
+.. attribute:: ItemsProcessedScore.value
+
+   A number of items that belong to the stream :attr:`ItemsProcessedScoreConfig.stream_name`
+   and have been processed during iterations.
+   Currently this number is aggregated throughout all iterations.
+
+
+.. _TopTokensScoreConfig:
+
+TopTokensScoreConfig
+====================
+
+.. class:: messages_pb2.TopTokensScoreConfig
+
+Represents a configuration of a top tokens score.
+
+.. code-block:: bash
+
+  message TopTokensScoreConfig {
+    optional int32 num_tokens = 1 [default = 10];
+    optional string class_id = 2;
+    repeated string topic_name = 3;
+  }
+
+.. attribute:: TopTokensScoreConfig.num_tokens
+
+   A value that defines how many top tokens should be retrieved for each topic.
+
+.. attribute:: TopTokensScoreConfig.class_id
+
+   A value that defines for which class of the model to collect top tokens.
+   This value corresponds to :attr:`ModelConfig.class_id` field.
+
+   This parameter is optional. By default tokens will be retrieved for
+   the default class ('@default_class').
+
+.. attribute:: TopTokensScoreConfig.topic_name
+
+   A set of values that represent the names of the topics to include in the result.
+   The names correspond to :attr:`ModelConfig.topic_name`.
+
+   This parameter is optional. By default top tokens will be calculated for all topics in the model.
+
+
+.. _TopTokensScore:
+
+TopTokensScore
+==============
+
+.. class:: messages_pb2.TopTokensScore
+
+Represents a result of calculation of a top tokens score.
+
+.. code-block:: bash
+
+  message TopTokensScore {
+    optional int32 num_entries = 1;
+    repeated string topic_name = 2;
+    repeated int32 topic_index = 3;
+    repeated string token = 4;
+    repeated float weight = 5;
+  }
+
+The data in this score is represented in a table-like format.
+sorted on topic_index.
+The following code block gives a typical usage example.
+The loop below is guarantied to process all top-N tokens for the first topic,
+then for the second topic, etc.
+
+.. code-block:: c
+
+  for (int i = 0; i < top_tokens_score.num_entries(); i++) {
+    // Gives a index from 0 to (model_config.topics_size() - 1)
+    int topic_index = top_tokens_score.topic_index(i);
+
+    // Gives one of the topN tokens for topic 'topic_index'
+    std::string token = top_tokens_score.token(i);
+
+    // Gives the weight of the token
+    float weight = top_tokens_score.weight(i);
+  }
+
+
+.. attribute:: TopTokensScore.num_entries
+
+   A value indicating the overall number of entries in the score.
+   All the remaining repeated fiels in this score will have this length.
+
+.. attribute:: TopTokensScore.token
+
+   A repeated field of :attr:`num_entries` elements,
+   containing tokens with high probability.
+
+.. attribute:: TopTokensScore.weight
+
+   A repeated field of :attr:`num_entries` elements,
+   containing the *p(t|w)* probabilities.
+
+.. attribute:: TopTokensScore.topic_index
+
+   A repeated field of :attr:`num_entries` elements,
+   containing integers between 0 and (:attr:`ModelConfig.topics_count` - 1).
+
+.. attribute:: TopTokensScore.topic_name
+
+   A repeated field of :attr:`num_entries` elements,
+   corresponding to the values of :attr:`ModelConfig.topic_name` field.
+
+.. _ThetaSnippetScoreConfig:
+
+ThetaSnippetScoreConfig
+=======================
+
+.. class:: messages_pb2.ThetaSnippetScoreConfig
+
+Represents a configuration of a theta snippet score.
+
+.. code-block:: bash
+
+  message ThetaSnippetScoreConfig {
+    optional string field_name = 1 [default = "@body"];  // obsolete in BigARTM v0.5.8
+    optional string stream_name = 2 [default = "@global"];
+    repeated int32 item_id = 3 [packed = true];  // obsolete in BigARTM v0.5.8
+    optional int32 item_count = 4 [default = 10];
+  }
+
+.. attribute:: ThetaSnippetScoreConfig.field_name
+
+   Obsolete in BigARTM v0.5.8
+
+.. attribute:: ThetaSnippetScoreConfig.stream_name
+
+   A value that defines which stream should be used in calculation of a theta snippet.
+
+.. attribute:: ThetaSnippetScoreConfig.item_id
+
+   Obsolete in BigARTM v0.5.8.
+
+.. attribute:: ThetaSnippetScoreConfig.item_count
+
+   The number of items to retrieve. ThetaSnippetScore will select last *item_count* processed items
+   and return their theta vectors.
+
+
+.. _ThetaSnippetScore:
+
+ThetaSnippetScore
+=================
+
+.. class:: messages_pb2.ThetaSnippetScore
+
+Represents a result of calculation of a theta snippet score.
+
+.. code-block:: bash
+
+  message ThetaSnippetScore {
+    repeated int32 item_id = 1;
+    repeated FloatArray values = 2;
+  }
+
+.. attribute:: ThetaSnippetScore.item_id
+
+   A set of item ids for which theta snippet have been calculated.
+   Items are identified by the item id.
+
+
+.. attribute:: ThetaSnippetScore.values
+
+   A set of values that define topic probabilities for each item.
+   The length of these repeated values will match the number of item ids
+   specified in :attr:`ThetaSnippetScore.item_id`.
+   Each repeated field contains float array of topic probabilities in the natural order of topic ids.
+
+
+.. _TopicKernelScoreConfig:
+
+TopicKernelScoreConfig
+======================
+
+.. class:: messages_pb2.TopicKernelScoreConfig
+
+Represents a configuration of a topic kernel score.
+
+.. code-block:: bash
+
+  message TopicKernelScoreConfig {
+    optional float eps = 1 [default = 1e-37];
+    optional string class_id = 2;
+    repeated string topic_name = 3;
+    optional double probability_mass_threshold = 4 [default = 0.1];
+  }
+
+* *Kernel* of a topic model is defined as the list of all tokens such that
+  the probability ``p(t | w)`` exceeds probability mass threshold.
+
+* *Kernel size* of a topic ``t`` is defined as the number of tokens in its kernel.
+
+* *Topic purity* of a topic ``t`` is defined as the sum of ``p(w | t)``
+  across all tokens ``w`` in the kernel.
+
+* *Topic contrast* of a topic ``t`` is defined as the sum of ``p(t | w)``
+  across all tokens ``w`` in the kernel defided by the size of the kernel.
+
+.. attribute:: TopicKernelScoreConfig.eps
+
+  Defines the minimum threshold on kernel size.
+  In most cases this parameter should be kept at the default value.
+
+.. attribute:: TopicKernelScoreConfig.class_id
+
+   A value that defines the class of tokens to use for score calculation.
+   This value corresponds to :attr:`ModelConfig.class_id` field.
+   This value is optional. By default the score will be calculated for
+   the default class ('@default_class').
+
+.. attribute:: TopicKernelScoreConfig.topic_name
+
+   A set of topic names that defines which topics should be used for score calculation.
+   This value is optional, use an empty list to calculate the score for all topics.
+
+.. attribute:: TopicKernelScoreConfig.probability_mass_threshold
+
+  Defines the probability mass threshold (see the definition of *kernel* above).
+
+
+.. _TopicKernelScore:
+
+TopicKernelScore
+================
+
+.. class:: messages_pb2.TopicKernelScore
+
+Represents a result of calculation of a topic kernel score.
+
+.. code-block:: bash
+
+  message TopicKernelScore {
+    optional DoubleArray kernel_size = 1;
+    optional DoubleArray kernel_purity = 2;
+    optional DoubleArray kernel_contrast = 3;
+    optional double average_kernel_size = 4;
+    optional double average_kernel_purity = 5;
+    optional double average_kernel_contrast = 6;
+  }
+
+.. attribute:: TopicKernelScore.kernel_size
+
+  Provides the kernel size for all requested topics.
+  The length of this :ref:`DoubleArray` is always equal to the overall number of topics.
+  The values of ``-1`` correspond to non-calculated topics.
+  The remaining values carry the kernel size of the requested topics.
+
+.. attribute:: TopicKernelScore.kernel_purity
+
+  Provides the kernel purity for all requested topics.
+  The length of this :ref:`DoubleArray` is always equal to the overall number of topics.
+  The values of ``-1`` correspond to non-calculated topics.
+  The remaining values carry the kernel size of the requested topics.
+
+.. attribute:: TopicKernelScore.kernel_contrast
+
+  Provides the kernel contrast for all requested topics.
+  The length of this :ref:`DoubleArray` is always equal to the overall number of topics.
+  The values of ``-1`` correspond to non-calculated topics.
+  The remaining values carry the kernel contrast of the requested topics.
+
+.. attribute:: TopicKernelScore.average_kernel_size
+
+  Provides the average kernel size across all the requested topics.
+
+.. attribute:: TopicKernelScore.average_kernel_purity
+
+  Provides the average kernel purity across all the requested topics.
+
+.. attribute:: TopicKernelScore.average_kernel_contrast
+
+  Provides the average kernel contrast across all the requested topics.
+
+
+.. _TopicModel:
+
+TopicModel
+==========
+
+.. class:: messages_pb2.TopicModel
+
+Represents a topic model.
+This message can contain data in either dense or sparse format.
+The key idea behind sparse format is to avoid storing zero ``p(w|t)``
+elements of the Phi matrix.
+Please refer to the description of :attr:`TopicModel.topic_index` field for more details.
+
+To distinguish between these two formats
+check whether repeated field :attr:`TopicModel.topic_index` is empty.
+An empty field indicate a dense format,
+otherwise the message contains data in a sparse format.
+To request topic model in a sparse format set 
+:attr:`GetTopicModelArgs.use_sparse_format` field to ``True``
+when calling :c:func:`ArtmRequestTopicModel`.
+
+.. code-block:: bash
+
+  message TopicModel {
+    enum OperationType {
+      Initialize = 0;
+      Increment = 1;
+      Overwrite = 2;
+      Remove = 3;
+      Ignore = 4;
+    }
+
+    optional string name = 1 [default = "@model"];
+    optional int32 topics_count = 2;
+    repeated string topic_name = 3;
+    repeated string token = 4;
+    repeated FloatArray token_weights = 5;
+    repeated string class_id = 6;
+
+    message TopicModelInternals {
+      repeated FloatArray n_wt = 1;
+      repeated FloatArray r_wt = 2;
+    }
+
+    optional bytes internals = 7;  // obsolete in BigARTM v0.6.3
+    repeated IntArray topic_index = 8;
+    repeated OperationType operation_type = 9;
+  }
+
+.. attribute:: TopicModel.name
+
+   A value that describes the name of the topic model (:attr:`TopicModel.name`).
+
+.. attribute:: TopicModel.topics_count
+
+   A value that describes the number of topics in this message.
+
+.. attribute:: TopicModel.topic_name
+
+   A value that describes the names of the topics included in given :ref:`TopicModel` message.
+   This values will represent a subset of topics, defined by :attr:`GetTopicModelArgs.topic_name` message.
+   In case of empty :attr:`GetTopicModelArgs.topic_name` this values will correspond to the entire
+   set of topics, defined in :attr:`ModelConfig.topic_name` field.
+
+.. attribute:: TopicModel.token
+
+   The set of all tokens, included in the topic model.
+
+.. attribute:: TopicModel.token_weights
+
+   A set of token weights.
+   The length of this repeated field will match the length of the repeated field :attr:`TopicModel.token`.
+   The length of each :ref:`FloatArray` will match the :attr:`TopicModel.topics_count` field (in dense representation),
+   or the length of the corresponding :ref:`IntArray` from :attr:`TopicModel.topic_index` field (in sparse representation).
+
+.. attribute:: TopicModel.class_id
+
+   A set values that specify the class (modality) of the tokens.
+   The length of this repeated field will match the length of the repeated field :attr:`TopicModel.token`.
+
+.. attribute:: TopicModel.internals
+
+   Obsolete in BigARTM v0.6.3.
+
+.. attribute:: TopicModel.topic_index
+
+   A repeated field used for sparse topic model representation.
+   This field has the same length as
+   :attr:`TopicModel.token`, :attr:`TopicModel.class_id` and :attr:`TopicModel.token_weights`.
+   Each element in *topic_index* is an instance of :ref:`IntArray` message,
+   containing a list of values between 0 and the length of :attr:`TopicModel.topic_name` field.
+   This values correspond to the indices in :attr:`TopicModel.topic_name` array,
+   and tell which topics has non-zero ``p(w|t)`` probabilities for a given token.
+   The actual ``p(w|t)`` values can be found in :attr:`TopicModel.token_weights` field.
+   The length of each :ref:`IntArray` message in :attr:`TopicModel.topic_index` field 
+   equals to the length of the corresponding
+   :ref:`FloatArray` message in :attr:`TopicModel.token_weights` field.
+
+   .. warning::
+
+      Be careful with :attr:`TopicModel.topic_index` when this message
+      represents a subset of topics, defined by :attr:`GetTopicModelArgs.topic_name`.
+      In this case indices correspond to the selected subset of topics,
+      which might not correspond to topic indices in the original :ref:`ModelConfig` message.
+
+.. attribute:: TopicModel.operation_type
+
+   A set of values that define operation to perform on each token
+   when topic model is used as an argument of :c:func:`ArtmOverwriteTopicModel`.
+
+   ================== =========================================================
+   ``Initialize``     Indicates that a new token should be added to the
+                      topic model. Initial ``n_wt`` counter will be initialized
+                      with random value from ``[0, 1]`` range.
+                      :attr:`TopicModel.token_weights` is ignored.
+                      This operation is ignored if token already exists.
+
+   ``Increment``      Indicates that ``n_wt`` counter of the token should be
+                      increased by values, specified in
+                      :attr:`TopicModel.token_weights` field.
+                      A new token will be created if it does not exist yet.
+
+   ``Overwrite``      Indicates that ``n_wt`` counter of the token should be
+                      set to the value, specified in
+                      :attr:`TopicModel.token_weights` field.
+                      A new token will be created if it does not exist yet.
+
+   ``Remove``         Indicates that the token should be removed from the
+                      topic model.
+                      :attr:`TopicModel.token_weights` is ignored.
+
+   ``Ignore``         Indicates no operation for the token.
+                      The effect is the same as if
+                      the token is not present in this message.
+   ================== =========================================================
+
+
+.. _ThetaMatrix:
+
+ThetaMatrix
+===========
+
+.. class:: messages_pb2.ThetaMatrix
+
+Represents a theta matrix.
+This message can contain data in either dense or sparse format.
+The key idea behind sparse format is to avoid storing zero ``p(t|d)``
+elements of the Theta matrix.
+Sparse representation of Theta matrix is equivalent to sparse representation
+of Phi matrix. Please, refer to :ref:`TopicModel` for detailed description of the sparse format.
+
+.. code-block:: bash
+
+  message ThetaMatrix {
+    optional string model_name = 1 [default = "@model"];
+    repeated int32 item_id = 2;
+    repeated FloatArray item_weights = 3;
+    repeated string topic_name = 4;
+    optional int32 topics_count = 5;
+    repeated string item_title = 6;
+    repeated IntArray topic_index = 7;
+  }
+
+.. attribute:: ThetaMatrix.model_name
+
+   A value that describes the name of the topic model.
+   This name will match the name of the corresponding model config.
+
+.. attribute:: ThetaMatrix.item_id
+
+   A set of item IDs corresponding to :attr:`Item.id` values.
+
+.. attribute:: ThetaMatrix.item_weights
+
+   A set of item ID weights.
+   The length of this repeated field will match the length of the repeated field :attr:`ThetaMatrix.item_id`.
+   The length of each :ref:`FloatArray` will match the :attr:`ThetaMatrix.topics_count` field (in dense representation),
+   or the length of the corresponding :ref:`IntArray` from :attr:`ThetaMatrix.topic_index` field (in sparse representation).
+
+.. attribute:: ThetaMatrix.topic_name
+
+   A value that describes the names of the topics included in given :ref:`ThetaMatrix` message.
+   This values will represent a subset of topics, defined by :attr:`GetThetaMatrixArgs.topic_name` message.
+   In case of empty :attr:`GetTopicModelArgs.topic_name` this values will correspond to the entire
+   set of topics, defined in :attr:`ModelConfig.topic_name` field.
+
+.. attribute:: ThetaMatrix.topics_count
+
+   A value that describes the number of topics in this message.
+
+.. attribute:: ThetaMatrix.item_title
+
+   A set of item titles, corresponding to :attr:`Item.title` values.
+   Beware that this field might be empty (e.g. of zero length)
+   if all items did not have title specified in :attr:`Item.title`.
+
+.. attribute:: ThetaMatrix.topic_index
+
+   A repeated field used for sparse theta matrix representation.
+   This field has the same length as
+   :attr:`ThetaMatrix.item_id`, :attr:`ThetaMatrix.item_weights` and :attr:`ThetaMatrix.item_title`.
+   Each element in *topic_index* is an instance of :ref:`IntArray` message,
+   containing a list of values between 0 and the length of :attr:`TopicModel.topic_name` field.
+   This values correspond to the indices in :attr:`ThetaMatrix.topic_name` array,
+   and tell which topics has non-zero ``p(t|d)`` probabilities for a given item.
+   The actual ``p(t|d)`` values can be found in :attr:`ThetaMatrix.item_weights` field.
+   The length of each :ref:`IntArray` message in :attr:`ThetaMatrix.topic_index` field 
+   equals to the length of the corresponding
+   :ref:`FloatArray` message in :attr:`ThetaMatrix.item_weights` field.
+
+   .. warning::
+
+      Be careful with :attr:`ThetaMatrix.topic_index` when this message
+      represents a subset of topics, defined by :attr:`GetThetaMatrixArgs.topic_name`.
+      In this case indices correspond to the selected subset of topics,
+      which might not correspond to topic indices in the original :ref:`ModelConfig` message.
+
+.. _CollectionParserConfig:
+
+CollectionParserConfig
+======================
+
+.. class:: messages_pb2.CollectionParserConfig
+
+Represents a configuration of a collection parser.
+
+.. code-block:: bash
+
+  message CollectionParserConfig {
+    enum Format {
+      BagOfWordsUci = 0;
+      MatrixMarket = 1;
+    }
+
+    optional Format format = 1 [default = BagOfWordsUci];
+    optional string docword_file_path = 2;
+    optional string vocab_file_path = 3;
+    optional string target_folder = 4;
+    optional string dictionary_file_name = 5;
+    optional int32 num_items_per_batch = 6 [default = 1000];
+    optional string cooccurrence_file_name = 7;
+    repeated string cooccurrence_token = 8;
+    optional bool use_unity_based_indices = 9 [default = true];
+  }
+
+.. attribute:: CollectionParserConfig.format
+
+   A value that defines the format of a collection to be parsed.
+
+   ====================== =======================================================================
+   ``BagOfWordsUci``      | A bag-of-words collection, stored in UCI format.
+                          | UCI format must have two files - `vocab.*.txt`
+                          | and `docword.*.txt`, defined by
+                          | :attr:`docword_file_path <CollectionParserConfig.docword_file_path>`
+                          | and :attr:`vocab_file_path <CollectionParserConfig.vocab_file_path>`.
+                          | The format of the docword.*.txt file is 3 header
+                          | lines, followed by NNZ triples:
+
+                          .. code-block:: bash
+
+                            D
+                            W
+                            NNZ
+                            docID wordID count
+                            docID wordID count
+                            ...
+                            docID wordID count
+
+                          | The file must be sorted on docID.
+                          | Values of wordID must be unity-based (not zero-based).
+                          | The format of the vocab.*.txt file is line containing wordID=n.
+                          | Note that words must not have spaces or tabs.
+                          | In vocab.*.txt file it is also possible to specify
+                          | :attr:`Batch.class_id` for tokens, as it is shown in this example:
+
+                          .. code-block:: bash
+
+                            token1 @default_class
+                            token2 custom_class
+                            token3 @default_class
+                            token4
+
+                          | Use space or tab to separate token from its class.
+                          | Token that are not followed by class label automatically
+                          | get ''@default_class'' as a lable (see ''token4'' in the example).
+
+   ``MatrixMarket``       | See the description at http://math.nist.gov/MatrixMarket/formats.html
+                          | In this mode parameter :attr:`docword_file_path` must refer to a file
+                          | in Matrix Market format. Parameter :attr:`vocab_file_path`
+                          | is also required and must refer to a dictionary file exported in
+                          | `gensim`_ format (dictionary.save_as_text()).
+   ====================== =======================================================================
+
+.. _gensim: http://radimrehurek.com/gensim/corpora/dictionary.html#gensim.corpora.dictionary.Dictionary.save_as_text
+
+.. attribute:: CollectionParserConfig.docword_file_path
+
+   A value that defines the disk location of a ``docword.*.txt`` file
+   (the bag of words file in sparse format).
+
+.. attribute:: CollectionParserConfig.vocab_file_path
+
+   A value that defines the disk location of a ``vocab.*.txt`` file
+   (the file with the vocabulary of the collection).
+
+
+.. attribute:: CollectionParserConfig.target_folder
+
+   A value that defines the disk location where to stores all the results after parsing the colleciton.
+   Usually the resulting location will contain a set of :ref:`batches <Batch>`,
+   and a :ref:`DictionaryConfig` that contains all unique tokens occured in the collection.
+   Such location can be further passed MasterComponent via :attr:`MasterComponentConfig.disk_path`.
+
+.. attribute:: CollectionParserConfig.dictionary_file_name
+
+   A file name where to save the :ref:`DictionaryConfig` message
+   that contains all unique tokens occured in the collection.
+   The file will be created in :attr:`target_folder <CollectionParserConfig.target_folder>`.
+
+   This parameter is optional. The dictionary will be still collected even when this parameter is
+   not provided, but the resulting dictionary will be only returned as the result of
+   :ref:`ArtmRequestParseCollection`, but it will not be stored to disk.
+
+   In the resulting dictionary each entry will have the following fields:
+
+   * :attr:`DictionaryEntry.key_token` - the textual representation of the token,
+
+   * :attr:`DictionaryEntry.class_id` - the label of the default class ("@DefaultClass"),
+
+   * :attr:`DictionaryEntry.token_count` - the overall number of occurrences of the token in the collection,
+
+   * :attr:`DictionaryEntry.items_count` - the number of documents in the collection, containing the token.
+
+   * :attr:`DictionaryEntry.value` - the ratio between :attr:`token_count <DictionaryEntry.token_count>`
+     and :attr:`total_token_count <DictionaryConfig.total_token_count>`.
+
+   Use :ref:`ArtmRequestLoadDictionary` method to load the resulting dictionary.
+
+.. attribute:: CollectionParserConfig.num_items_per_batch
+
+   A value indicating the desired number of items per batch.
+
+.. attribute:: CollectionParserConfig.cooccurrence_file_name
+
+   A file name where to save the :ref:`DictionaryConfig` message
+   that contains information about co-occurrence of all pairs of tokens in the collection.
+   The file will be created in :attr:`target_folder <CollectionParserConfig.target_folder>`.
+
+   This parameter is optional. No cooccurrence information will be collected if the filename is not provided.
+
+   In the resulting dictionary each entry will correspond to two tokens ('<first>' and '<second>'),
+   and carry the information about co-occurrence of this tokens in the collection.
+
+   * :attr:`DictionaryEntry.key_token` - a string of the form '<first>~<second>',
+     produced by concatenation of two tokens together via the tilde symbol ('~').
+     `<first>` tokens is guarantied lexicographic less than the `<second>` token.
+
+   * :attr:`DictionaryEntry.class_id` - the label of the default class ("@DefaultClass").
+
+   * :attr:`DictionaryEntry.items_count` - the number of documents in the collection,
+     containing both tokens ('<first>' and '<second>')
+
+   Use :ref:`ArtmRequestLoadDictionary` method to load the resulting dictionary.
+
+.. attribute:: CollectionParserConfig.cooccurrence_token
+
+   A list of tokens to collect cooccurrence information.
+   A cooccurrence of the pair `<first>~<second>` will be collected only when both tokens are present in
+   :attr:`CollectionParserConfig.cooccurrence_token`.
+
+.. attribute:: CollectionParserConfig.use_unity_based_indices
+
+   A flag indicating whether to interpret indices in docword file as unity-based or as zero-based.
+   By default `'use_unity_based_indices = True``, as required by UCI bag-of-words format.
+
+.. _SynchronizeModelArgs:
+
+SynchronizeModelArgs
+====================
+
+.. class:: messages_pb2.SynchronizeModelArgs
+
+Represents an argument of synchronize model operation.
+
+.. code-block:: bash
+
+  message SynchronizeModelArgs {
+    optional string model_name = 1;
+    optional float decay_weight = 2 [default = 0.0];
+    optional bool invoke_regularizers = 3 [default = true];
+    optional float apply_weight = 4 [default = 1.0];
+  }
+
+.. attribute:: SynchronizeModelArgs.model_name
+
+  The name of the model to be synchronized.
+  This value is optional. When not set, all models will be synchronized with the same decay weight.
+
+.. attribute:: SynchronizeModelArgs.decay_weight
+
+  The decay weight and :attr:`apply_weight` define how to combine existing topic model with all increments,
+  calculated since the last :c:func:`ArtmSynchronizeModel`.
+  This is best described by the following formula:
+
+  ``n_wt_new = n_wt_old * decay_weight + n_wt_inc * apply_weight``,
+
+  where
+  ``n_wt_old`` describe current topic model,
+  ``n_wt_inc`` describe increment calculated since last :c:func:`ArtmSynchronizeModel`,
+  ``n_wt_new`` define the resulting topic model.
+
+  Expected values of both parameters are between 0.0 and 1.0. Here are some examples:
+
+  * Combination of *decay_weight=0.0* and *apply_weight=1.0* states that the previous Phi matrix of the topic model will be disregarded completely,
+    and the new Phi matrix will be formed based on new increments gathered since last model synchronize.
+
+  * Combination of *decay_weight=1.0* and *apply_weight=1.0* states that new increments will be appended to the current Phi matrix without any decay.
+
+  * Combination of *decay_weight=1.0* and *apply_weight=0.0* states that new increments will be disregarded, and current Phi matrix will stay unchanged.
+
+  * To reproduce Online variational Bayes for LDA algorighm by Matthew D. Hoffman set
+    *decay_weight = 1 - rho* and *apply_weight = rho*, where parameter rho is defined as *rho = exp(tau + t, -kappa)*.
+    See `Online Learning for Latent Dirichlet Allocation`_ for further details.
+
+.. attribute:: SynchronizeModelArgs.apply_weight
+
+  See :attr:`decay_weight` for the description.
+
+.. attribute:: SynchronizeModelArgs.invoke_regularizers
+
+  A flag indicating whether to invoke all phi-regularizers.
+
+.. _Online Learning for Latent Dirichlet Allocation: https://www.cs.princeton.edu/~blei/papers/HoffmanBleiBach2010b.pdf
+
+.. _InitializeModelArgs:
+
+InitializeModelArgs
+===================
+
+.. class:: messages_pb2.InitializeModelArgs
+
+Represents an argument of :c:func:`ArtmInitializeModel` operation.
+Please refer to
+`example14_initialize_topic_model.py <https://raw.githubusercontent.com/bigartm/bigartm/master/python/examples/example14_initialize_topic_model.py>`_
+for further information.
+
+.. code-block:: bash
+
+  message InitializeModelArgs {
+    enum SourceType {
+      Dictionary = 0;
+      Batches = 1;
+    }
+
+    message Filter {
+      optional string class_id = 1;
+      optional float min_percentage = 2;
+      optional float max_percentage = 3;
+      optional int32 min_items = 4;
+      optional int32 max_items = 5;
+      optional int32 min_total_count = 6;
+      optional int32 min_one_item_count = 7;
+    }
+
+    optional string model_name = 1;
+    optional string dictionary_name = 2;
+    optional SourceType source_type = 3 [default = Dictionary];
+
+    optional string disk_path = 4;
+    repeated Filter filter = 5;
+  }
+
+.. attribute:: InitializeModelArgs.model_name
+
+  The name of the model to be initialized.
+
+.. attribute:: InitializeModelArgs.dictionary_name
+
+  The name of the dictionary containing all tokens that should be initialized.
+
+.. _GetTopicModelArgs:
+  
+GetTopicModelArgs
+=================
+
+Represents an argument of :c:func:`ArtmRequestTopicModel` operation.
+
+.. code-block:: bash
+
+  message GetTopicModelArgs {
+    enum RequestType {
+      Pwt = 0;
+      Nwt = 1;
+    }
+
+    optional string model_name = 1;
+    repeated string topic_name = 2;
+    repeated string token = 3;
+    repeated string class_id = 4;
+    optional bool use_sparse_format = 5;
+    optional float eps = 6 [default = 1e-37];
+    optional RequestType request_type = 7 [default = Pwt];
+  }
+
+.. attribute:: GetTopicModelArgs.model_name
+
+  The name of the model to be retrieved.
+
+.. attribute:: GetTopicModelArgs.topic_name
+
+  The list of topic names to be retrieved.
+  This value is optional. When not provided, all topics will be retrieved.
+
+.. attribute:: GetTopicModelArgs.token
+
+  The list of tokens to be retrieved.
+  The length of this field must match the length of :attr:`class_id` field.
+  This field is optional. When not provided, all tokens will be retrieved.
+
+.. attribute:: GetTopicModelArgs.class_id
+
+  The list of classes corresponding to all tokens.
+  The length of this field must match the length of :attr:`token` field.
+  This field is only required together with :attr:`token`, otherwise it is ignored.
+  
+.. attribute:: GetTopicModelArgs.use_sparse_format
+
+  An optional flag that defines whether to use sparse format for the resulting :attr:`TopicModel` message.
+  See :attr:`TopicModel` message for additional information about the sparse format.
+  Note that setting *use_sparse_format = true* results in empty :attr:`TopicModel.internals` field.
+
+.. attribute:: GetTopicModelArgs.eps
+
+   A small value that defines zero threshold for ``p(w|t)`` probabilities.
+   This field is only used in sparse format.
+   ``p(w|t)`` below the threshold will be excluded from the resulting Phi matrix.
+
+.. attribute:: GetTopicModelArgs.request_type
+
+   An optional value that defines what kind of data to retrieve in this operation.
+
+   ======== ====================================================================
+   Pwt      Indicates that the resulting :ref:`TopicModel` message
+            should contain ``p(w|t)`` probabilities.
+            This values are normalized to form a probability distribution
+            (``sum_w p(w|t) = 1`` for all topics ``t``).
+
+   Nwt      Indicates that the resulting :ref:`TopicModel` message
+            should contain internal ``n_wt`` counters of the topic model.
+            This values represent an internal state of the topic model.
+   ======== ====================================================================
+
+   Default setting is to retrieve ``p(w|t)`` probabilities.
+   This probabilities are sufficient to infer ``p(t|d)`` distributions
+   using this topic model.
+
+   ``n_wt`` counters allow you to restore the precise state of the topic model.
+   By passing this values in :c:func:`ArtmOverwriteTopicModel` operation
+   you are guarantied to get the model in the same state as you retrieved it.
+   As the result you may continue topic model inference from the point
+   you have stopped it last time.
+
+   ``p(w|t)`` values can be also restored via c:func:`ArtmOverwriteTopicModel`
+   operation. The resulting model will give the same ``p(t|d)`` distributions,
+   however you should consider this model as *read-only*, and do not call
+   :c:func:`ArtmSynchronizeModel` on it.
+
+.. _GetThetaMatrixArgs:
+  
+GetThetaMatrixArgs
+==================
+
+Represents an argument of :c:func:`ArtmRequestThetaMatrix` operation.
+
+.. code-block:: bash
+
+  message GetThetaMatrixArgs {
+    optional string model_name = 1;
+    optional Batch batch = 2;
+    repeated string topic_name = 3;
+    repeated int32 topic_index = 4;
+    optional bool clean_cache = 5 [default = false];
+    optional bool use_sparse_format = 6 [default = false];
+    optional float eps = 7 [default = 1e-37];
+  }
+
+.. attribute:: GetThetaMatrixArgs.model_name
+
+  The name of the model to retrieved theta matrix for.
+
+.. attribute:: GetThetaMatrixArgs.batch
+
+  The :ref:`Batch` to classify with the model.
+
+.. attribute:: GetThetaMatrixArgs.topic_name
+
+  The list of topic names, describing which topics to include in the Theta matrix.
+  The values of this field should correspond to values in :attr:`ModelConfig.topic_name`.
+  This field is optional, by default all topics will be included.
+
+.. attribute:: GetThetaMatrixArgs.topic_index
+
+  The list of topic indices, describing which topics to include in the Theta matrix.
+  The values of this field should be an integers between 0 and (:attr:`ModelConfig.topics_count` - 1).
+  This field is optional, by default all topics will be included.
+
+  Note that this field acts similar to :attr:`GetThetaMatrixArgs.topic_name`.
+  It is not allowed to specify both *topic_index* and *topic_name* at the same time.
+  The recommendation is to use *topic_name*.
+
+.. attribute:: GetThetaMatrixArgs.clean_cache
+
+  An optional flag that defines whether to clear the theta matrix cache after this operation.
+  Setting this value to *True* will clear the cache for a topic model, defined by :attr:`GetThetaMatrixArgs.model_name`.
+  This value is only applicable when :attr:`MasterComponentConfig.cache_theta` is set to *True*.
+
+.. attribute:: GetThetaMatrixArgs.use_sparse_format
+
+  An optional flag that defines whether to use sparse format for the resulting :attr:`ThetaMatrix` message.
+  See :attr:`ThetaMatrix` message for additional information about the sparse format.
+
+.. attribute:: GetThetaMatrixArgs.eps
+
+   A small value that defines zero threshold for ``p(t|d)`` probabilities.
+   This field is only used in sparse format.
+   ``p(t|d)`` below the threshold will be excluded from the resulting Theta matrix.
+
+.. _GetScoreValueArgs:
+
+GetScoreValueArgs
+=================
+
+Represents an argument of get score operation.
+
+.. code-block:: bash
+
+  message GetScoreValueArgs {
+    optional string model_name = 1;
+    optional string score_name = 2;
+    optional Batch batch = 3;
+  }
+
+.. attribute:: GetScoreValueArgs.model_name
+
+  The name of the model to retrieved score for.
+
+.. attribute:: GetScoreValueArgs.score_name
+
+  The name of the score to retrieved.
+
+.. attribute:: GetScoreValueArgs.batch
+
+  The :ref:`Batch` to calculate the score.
+  This option is only applicable to cumulative scores.
+  When not provided the score will be reported for all batches processed since last :c:func:`ArtmInvokeIteration`.
+
+
+.. _AddBatchArgs:
+
+AddBatchArgs
+============
+
+Represents an argument of :c:func:`ArtmAddBatch` operation.
+
+.. code-block:: bash
+
+  message AddBatchArgs {
+    optional Batch batch = 1;
+    optional int32 timeout_milliseconds = 2 [default = -1];
+    optional bool reset_scores = 3 [default = false];
+    optional string batch_file_name = 4;
+  }
+
+.. attribute:: AddBatchArgs.batch
+
+  The :ref:`Batch` to add.
+
+.. attribute:: AddBatchArgs.timeout_milliseconds
+
+  Timeout in milliseconds for this operation.
+
+.. attribute:: AddBatchArgs.reset_scores
+
+  An optional flag that defines whether to reset all scores before this operation.
+
+.. attribute:: AddBatchArgs.batch_file_name
+
+  An optional value that defines disk location of the batch to add.
+  You must choose between parameters *batch_file_name* or *batch*
+  (either of them has to be specified, but not both at the same time).
+
+.. _InvokeIterationArgs:
+
+InvokeIterationArgs
+===================
+
+Represents an argument of :c:func:`ArtmInvokeIteration` operation.
+
+.. code-block:: bash
+
+  message InvokeIterationArgs {
+    optional int32 iterations_count = 1 [default = 1];
+    optional bool reset_scores = 2 [default = true];
+    optional string disk_path = 3;
+  }
+
+.. attribute:: InvokeIterationArgs.iterations_count
+
+  An integer value describing how many iterations to invoke.
+
+.. attribute:: InvokeIterationArgs.reset_scores
+
+  An optional flag that defines whether to reset all scores before this operation.
+
+.. attribute:: InvokeIterationArgs.disk_path
+
+  A value that defines the disk location with batches to process on this iteration.
+
+.. _WaitIdleArgs:
+
+WaitIdleArgs
+============
+
+Represents an argument of :c:func:`ArtmWaitIdle` operation.
+
+.. code-block:: bash
+
+  message WaitIdleArgs {
+    optional int32 timeout_milliseconds = 1 [default = -1];
+  }
+
+.. attribute:: WaitIdleArgs.timeout_milliseconds
+
+  Timeout in milliseconds for this operation.
+
+
+.. _ExportModelArgs:
+
+ExportModelArgs
+===============
+
+Represents an argument of :c:func:`ArtmExportModel` operation.
+
+.. code-block:: bash
+
+   message ExportModelArgs {
+     optional string file_name = 1;
+     optional string model_name = 2;
+   }
+
+.. attribute:: ExportModelArgs.file_name
+
+   A target file name where to store topic model.
+
+.. attribute:: ExportModelArgs.model_name
+
+   A value that describes the name of the topic model.
+   This name will match the name of the corresponding model config.
+
+
+.. _ImportModelArgs:
+
+ImportModelArgs
+===============
+
+Represents an argument of :c:func:`ArtmImportModel` operation.
+
+.. code-block:: bash
+
+   message ImportModelArgs {
+     optional string file_name = 1;
+     optional string model_name = 2;
+   }
+
+.. attribute:: ImportModelArgs.file_name
+
+   A target file name from where to load topic model.
+
+.. attribute:: ImportModelArgs.model_name
+
+   A value that describes the name of the topic model.
+   This name will match the name of the corresponding model config.

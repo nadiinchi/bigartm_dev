@@ -1,0 +1,47 @@
+sudo: false
+
+language:
+  - python
+  - cpp
+
+compiler:
+  - gcc
+
+python:
+  - "2.7"
+
+virtualenv:
+  system_site_packages: true
+
+addons:
+  apt:
+    sources:
+      - boost-latest                # for boost 1.55
+      - ubuntu-toolchain-r-test     # for g++-4.9
+    packages:
+      - cmake
+      - libboost1.55-all-dev
+      - python-numpy
+      - python-pandas
+      - python-virtualenv
+      - g++-4.9
+
+env:
+  - COMPILER=g++-4.9
+
+before_install:
+  - pip install pep8
+  - pip install -U pytest
+
+install:
+  - ./codestyle_checks.sh
+  - mkdir build
+  - pushd build && export CXX=$COMPILER && cmake -DBUILD_STATIC_BIGARTM=OFF .. && make -j2 && file ./src/bigartm/bigartm && popd
+  - pushd python && python setup.py install && popd
+
+before_script:
+  - pushd python/tests && ./download_datasets.sh && popd
+
+script:
+  - export ARTM_SHARED_LIBRARY=`pwd`/build/src/artm/libartm.so
+  - pushd build && make test ARGS="-V" && popd

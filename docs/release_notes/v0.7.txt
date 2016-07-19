@@ -1,0 +1,18 @@
+.. BigARTM documentation master file, created by
+   sphinx-quickstart on Sun Jul 13 20:00:11 2014.
+   You can adapt this file completely to your liking, but it should at least
+   contain the root `toctree` directive.
+
+.. _release_notes:
+
+BigARTM v0.7.X Release Notes
+============================
+
+.. toctree::
+   :maxdepth: 2
+
+   v0.7.0
+   v0.7.1
+   v0.7.2
+   v0.7.3
+   v0.7.4
