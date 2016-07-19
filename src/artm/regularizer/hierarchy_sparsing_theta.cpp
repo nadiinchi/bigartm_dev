@@ -24,7 +24,8 @@ namespace artm {
 				if (theta[topic_id] > 0.0f)
 					theta[topic_id] += alpha_weight[inner_iter] * topic_weight[topic_id] *
 				                       (prior_parent_topic_probability
-                                       - parent_topic_proportion[item_index] / topic_proportion[topic_id]);
+                                       - theta[topic_id] * parent_topic_proportion[item_index] 
+									    / topic_proportion[topic_id]);
 			}
 		}
 
